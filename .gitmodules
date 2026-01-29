@@ -1,0 +1,9 @@
+[submodule "Detours"]
+	path = Detours
+	url = git@github.com:microsoft/Detours.git
+[submodule "plog"]
+	path = plog
+	url = git@github.com:SergiusTheBest/plog.git
+[submodule "Tribes-Ascend-SDK"]
+	path = Tribes-Ascend-SDK
+	url = git@github.com:karan283861/Tribes-Ascend-SDK.git
