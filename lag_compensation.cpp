@@ -8,9 +8,7 @@ LagCompensation::ActorInformation::~ActorInformation(void)
 
 LagCompensation::ActorInformation *LagCompensation::IsActorLagCompensated(AActor *actor, ActorId filtered_actor_id = ActorId::kAny)
 {
-	auto actor_information{GetLagCompensationData(actor)};
-
-	if (actor_information)
+	if (auto actor_information{GetLagCompensationData(actor)})
 	{
 		if (filtered_actor_id == ActorId::kAny)
 		{
@@ -90,8 +88,7 @@ LagCompensation::ActorInformation *LagCompensation::LagCompensate(Projectile *pr
 
 void LagCompensation::DestroyLagCompensationData(AActor *actor)
 {
-	auto information{GetLagCompensationData(actor)};
-	if (information)
+	if (auto information{GetLagCompensationData(actor)})
 	{
 		delete information;
 		*reinterpret_cast<ActorInformation **>(&actor->EditorIconColor) = nullptr;
@@ -181,5 +178,35 @@ void LagCompensation::RestorePlayers(void)
 			auto player_information{reinterpret_cast<PlayerInformation *>(GetLagCompensationData(player))};
 			player->SetLocation(player_information->tick_information_.back().location_);
 		}
+	}
+}
+
+void LagCompensation::UpdateTickRateVariables(void)
+{
+	auto net_drivers{GetInstancesUObjects<UNetDriver>()};
+	// Keep a set of tick rates assigned to each NetDriver
+	auto set_of_tick_rates = std::unordered_set<float>();
+	for (auto &net_driver : net_drivers)
+	{
+		if (net_driver->NetServerMaxTickRate)
+		{
+			set_of_tick_rates.insert(net_driver->NetServerMaxTickRate);
+		}
+	}
+	if (set_of_tick_rates.size() > 1)
+	{
+		// Multiple NetDrivers found, with different tick rates
+		PLOG_ERROR << std::format("Conflicting NetDriver Tick Rates found. Using default tick rate of {0}.", tick_rate_);
+	}
+	else if (set_of_tick_rates.size() == 0)
+	{
+		PLOG_ERROR << std::format("No NetDrivers found. Using default tick rate of {0}.", tick_rate_);
+	}
+	else
+	{
+		tick_rate_ = *set_of_tick_rates.begin();
+		tick_delta_in_ms_ = 1000.0f / tick_rate_;
+		buffer_size_ = static_cast<size_t>((window_in_ms_ / tick_delta_in_ms_) + 2);
+		PLOG_INFO << std::format("Set tick rate to {0}", tick_rate_);
 	}
 }

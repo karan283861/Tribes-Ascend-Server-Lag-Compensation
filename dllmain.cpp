@@ -19,6 +19,7 @@
 #include "hook.hpp"
 #include "native_hooks.hpp"
 #include "processinternal_hooks.hpp"
+#include "lag_compensation.hpp"
 
 // #define HOOK_CALLFUNCTION
 #define LOG_FILE_NAME "LagCompensationLog.txt"
@@ -58,7 +59,7 @@ void OnDLLProcessAttach()
 
 	// For some reason multiple hooks on CallFunction (eg. multiple injected dlls) causes buggy behaviour/crashes.
 	// We should really only hook CallFunction when tracing UFunctions in the logs (ie. debugging)
-#if defined(_DEBUG) &&defined(HOOK_CALLFUNCTION)
+#if defined(_DEBUG) && defined(HOOK_CALLFUNCTION)
 	DetourAttach(&(PVOID &)original_callfunction, CallFunctionHook);
 #endif
 
@@ -92,6 +93,9 @@ void OnDLLProcessAttach()
 	// When a player pawn dies
 	processinternal_hooks.AddHook("Function TribesGame.TrPawn.Died", TrPawnDied,
 								  FunctionHookType::kPre);
+
+	static auto &lag_compensation{LagCompensation::GetInstance()};
+	lag_compensation.UpdateTickRateVariables();
 }
 
 BOOL APIENTRY DllMain(HMODULE hModule,

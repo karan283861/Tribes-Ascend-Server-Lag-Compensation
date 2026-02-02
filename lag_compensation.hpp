@@ -26,14 +26,14 @@ protected:
 
 public:
 	// Tick rate - initialise to the default value of 30
-	static constexpr float tick_rate_{30.0f};
-	static constexpr float tick_delta_in_ms_{1000.0f / tick_rate_};
+	static inline float tick_rate_{30.0f};
+	static inline float tick_delta_in_ms_{1000.0f / tick_rate_};
 	// Basically, the lag compensation buffer should be able to compensate for at least this ping
 	static constexpr Ping window_in_ms_{2000.0f};
 	// Don't perform lag compensation for any ping less than this
 	static constexpr Ping kMinimumPingThreshold{4.0f};
 	// The + 2 is neccessary to ensure we can compensate for between (kMinimumPingThreshold, window_in_ms_]
-	static constexpr size_t buffer_size_{static_cast<size_t>((window_in_ms_ / tick_delta_in_ms_) + 2)};
+	static inline size_t buffer_size_{static_cast<size_t>((window_in_ms_ / tick_delta_in_ms_) + 2)};
 
 	// If the change in ping of a player is not greater than kMaxPingDelta during a tick,
 	// then simply use the previous ping (optimisation)
@@ -45,7 +45,7 @@ public:
 	// Store all players that were valid (ie. alive) in the lastest tick
 	std::list<Player *> list_of_players_in_latest_tick_{};
 
-	enum class ActorId
+	enum class ActorId : std::size_t
 	{
 		kUnknown = 0xDEADBEEF,
 		kPlayer = 1,
@@ -103,4 +103,6 @@ public:
 	bool RewindPlayers(Ping ping_in_ms);
 	void RestorePlayers(void);
 	void Tick(float DeltaSeconds, ELevelTick TickType);
+
+	void UpdateTickRateVariables(void);
 };
