@@ -16,9 +16,9 @@
 #include "Detours/include/detours.h"
 
 #include "helper.hpp"
-#include "hook.hpp"
-#include "native_hooks.hpp"
+#include <uhook.hpp>
 #include "processinternal_hooks.hpp"
+#include "native_hooks.hpp"
 #include "lag_compensation.hpp"
 
 // #define HOOK_CALLFUNCTION

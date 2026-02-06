@@ -1,8 +1,6 @@
 #pragma once
 
 #include <memory>
-#include <exception>
-#include <iterator>
 
 template <typename T>
 class CircularBuffer
@@ -52,11 +50,6 @@ public:
 	// The latest inserted element will be at index 0.
 	T &at(size_t index) const
 	{
-		if (index < 0 || index >= size_)
-		{
-			throw std::out_of_range("");
-		}
-
 		size_t internal_index{back_index_ - 1 - index};
 		if ((1 + index) > back_index_)
 		{
