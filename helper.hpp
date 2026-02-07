@@ -2,7 +2,7 @@
 
 #include <string>
 #include <vector>
-#include "Tribes-Ascend-SDK/SdkHeaders.h"
+#include <SdkHeaders.h>
 
 using Projectile = ATrProjectile;
 using Player = ATrPlayerPawn;

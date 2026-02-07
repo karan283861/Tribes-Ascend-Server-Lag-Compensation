@@ -1,5 +1,6 @@
 #include <format>
 #include <plog/Log.h>
+#include <SdkHeaders.h>
 #include "helper.hpp"
 #include "processinternal_hooks.hpp"
 #include "lag_compensation.hpp"

@@ -1,8 +1,6 @@
 #pragma once
 
-#include <SdkHeaders.h>
 #include <uhook.hpp>
-
 
 PROCESSINTERNAL_HOOK(TrProjectileHurtRadiusInternal);
 PROCESSINTERNAL_HOOK(UTGameMatchInProgressBeginState);
