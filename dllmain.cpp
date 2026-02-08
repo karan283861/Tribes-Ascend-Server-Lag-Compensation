@@ -35,26 +35,32 @@ void ValidateUFunctionHookResult(const HookResult &hook_result, const std::strin
 	case HookResult::kSuccess:
 	{
 		PLOG_INFO << std::format("Successfully hooked {0}{1}", name, is_absorbing ? " [ABSORBING]" : "");
+		break;
 	}
 	case HookResult::kFailedIncorrectHookTypeAndHookAbsorb:
 	{
 		PLOG_ERROR << std::format("Failed to hook {0} due to incorrect hook type and hook absorb", name);
+		break;
 	}
 	case HookResult::kFailedToFindUFunction:
 	{
 		PLOG_ERROR << std::format("Failed to hook {0} as the UFunction was not found", name);
+		break;
 	}
 	case HookResult::kFailedUFunctionOutOfBounds:
 	{
 		PLOG_ERROR << std::format("Failed to hook {0} as the UFunction index was out of bounds", name);
+		break;
 	}
 	case HookResult::kFailedUnknownHookType:
 	{
 		PLOG_ERROR << std::format("Failed to hook {0} due to unknown hook type", name);
+		break;
 	}
 	default:
 	{
 		PLOG_ERROR << std::format("Hooking {0} resulted in unhandled behaviour", name);
+		break;
 	}
 	}
 }
