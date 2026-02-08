@@ -28,6 +28,58 @@ constexpr size_t kProcessEventAddress{0x00456F90};
 constexpr size_t kProcessInternalAddress{0x00459040};
 constexpr size_t kCallFunctionAddress{0x0045AD20};
 
+void ValidateUFunctionHookResult(const HookResult &hook_result, const std::string &name, const bool is_absorbing)
+{
+	switch (hook_result)
+	{
+	case HookResult::kSuccess:
+	{
+		PLOG_INFO << std::format("Successfully hooked {0}{1}", name, is_absorbing ? " [ABSORBING]" : "");
+	}
+	case HookResult::kFailedIncorrectHookTypeAndHookAbsorb:
+	{
+		PLOG_ERROR << std::format("Failed to hook {0} due to incorrect hook type and hook absorb", name);
+	}
+	case HookResult::kFailedToFindUFunction:
+	{
+		PLOG_ERROR << std::format("Failed to hook {0} as the UFunction was not found", name);
+	}
+	case HookResult::kFailedUFunctionOutOfBounds:
+	{
+		PLOG_ERROR << std::format("Failed to hook {0} as the UFunction index was out of bounds", name);
+	}
+	case HookResult::kFailedUnknownHookType:
+	{
+		PLOG_ERROR << std::format("Failed to hook {0} due to unknown hook type", name);
+	}
+	default:
+	{
+		PLOG_ERROR << std::format("Hooking {0} resulted in unhandled behaviour", name);
+	}
+	}
+}
+
+void PerformUFunctionHooks()
+{
+	std::vector<UFunctionHooks<ProcessInternalPrototype>::UFunctionHookInformation> processinternal_hooks_informations{
+		// When a projectile is created
+		{.name_ = "Function TribesGame.TrProjectile.PostBeginPlay", .hook_function_ = TrProjectilePostBeginPlay, .hook_type_ = FunctionHookType::kPost},
+		// When a projectile is destroyed
+		{.name_ = "Function UTGame.UTProjectile.Destroyed", .hook_function_ = UTProjectileDestroyed, .hook_type_ = FunctionHookType::kPost},
+		// When a projectile explodes to cause radial (splash) damage
+		{.name_ = "Function TribesGame.TrProjectile.HurtRadius_Internal", .hook_function_ = TrProjectileHurtRadiusInternal, .hook_type_ = FunctionHookType::kPre, .hook_absorb_ = FunctionHookAbsorb::kAbsorb},
+		// When a player pawn dies
+		{.name_ = "Function TribesGame.TrPawn.Died", .hook_function_ = TrPawnDied, .hook_type_ = FunctionHookType::kPre}};
+
+	for (const auto &ufunction_hook_information : processinternal_hooks_informations)
+	{
+		const auto result{processinternal_hooks.AddHook(ufunction_hook_information)};
+		ValidateUFunctionHookResult(result,
+									ufunction_hook_information.name_,
+									ufunction_hook_information.hook_absorb_ == FunctionHookAbsorb::kAbsorb);
+	}
+}
+
 void OnDLLProcessAttach()
 {
 	auto base_address{reinterpret_cast<size_t>(GetModuleHandle(0))};
@@ -78,21 +130,7 @@ void OnDLLProcessAttach()
 	processinternal_hooks = UFunctionHooks<ProcessInternalPrototype>(original_processinternal);
 	callfunction_hooks = UFunctionHooks<CallFunctionPrototype>(original_callfunction);
 
-	// When a projectile is created
-	processinternal_hooks.AddHook("Function TribesGame.TrProjectile.PostBeginPlay", TrProjectilePostBeginPlay,
-								  FunctionHookType::kPost);
-
-	// When a projectile is destroyed
-	processinternal_hooks.AddHook("Function UTGame.UTProjectile.Destroyed", UTProjectileDestroyed,
-								  FunctionHookType::kPost);
-
-	// When a projectile explodes to cause radial (splash) damage
-	processinternal_hooks.AddHook("Function TribesGame.TrProjectile.HurtRadius_Internal", TrProjectileHurtRadiusInternal,
-								  FunctionHookType::kPre, FunctionHookAbsorb::kAbsorb);
-
-	// When a player pawn dies
-	processinternal_hooks.AddHook("Function TribesGame.TrPawn.Died", TrPawnDied,
-								  FunctionHookType::kPre);
+	PerformUFunctionHooks();
 
 	static auto &lag_compensation{LagCompensation::GetInstance()};
 	lag_compensation.UpdateTickRateVariables();
