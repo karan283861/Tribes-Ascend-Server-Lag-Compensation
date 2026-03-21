@@ -55,8 +55,8 @@ PROCESSINTERNAL_HOOK(TrProjectilePostBeginPlay)
 
 PROCESSINTERNAL_HOOK(UTProjectileDestroyed)
 {
-	static auto &lag_compensation{LagCompensation::GetInstance()};
 	auto projectile{reinterpret_cast<Projectile *>(calling_uobject)};
+	static auto &lag_compensation{LagCompensation::GetInstance()};
 	lag_compensation.DestroyLagCompensationData(projectile);
 }
 
@@ -64,6 +64,5 @@ PROCESSINTERNAL_HOOK(TrPawnDied)
 {
 	auto player{reinterpret_cast<Player *>(calling_uobject)};
 	static auto &lag_compensation{LagCompensation::GetInstance()};
-
 	lag_compensation.DestroyLagCompensationData(player);
 }

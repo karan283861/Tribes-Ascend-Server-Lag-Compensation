@@ -36,8 +36,10 @@ void __fastcall ActorTickHook(AActor *actor, void *unused, float delta_seconds, 
 	// NOTE: Do NOT use IsA function in any repeatedly called function - it's expensive.
 	if (actor->Class == kPlayerClass && IsPlayerValid(player))
 	{
+		original_actor_tick(actor, nullptr, delta_seconds, tick_type);
 		lag_compensation.UpdatePlayer(player);
 		lag_compensation.list_of_players_in_latest_tick_.push_back(player);
+		return;
 	}
 	else if (prevent_projectiles_from_ticking && (actor_information = lag_compensation.IsActorLagCompensated(projectile, LagCompensation::ActorId::kProjectile)))
 	{

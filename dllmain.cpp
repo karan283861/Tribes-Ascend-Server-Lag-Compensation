@@ -52,6 +52,11 @@ void ValidateUFunctionHookResult(const HookResult &hook_result, const std::strin
 		PLOG_ERROR << std::format("Failed to hook {0} as the UFunction index was out of bounds", name);
 		break;
 	}
+	case HookResult::kFailedOverMaxHookCount:
+	{
+		PLOG_ERROR << std::format("Failed to hook {0} as the UFunction already has maximum number of hooks", name);
+		break;
+	}
 	case HookResult::kFailedUnknownHookType:
 	{
 		PLOG_ERROR << std::format("Failed to hook {0} due to unknown hook type", name);
@@ -84,6 +89,8 @@ void PerformUFunctionHooks()
 									ufunction_hook_information.name_,
 									ufunction_hook_information.hook_absorb_ == FunctionHookAbsorb::kAbsorb);
 	}
+
+	processinternal_hooks.SetOriginalFunction(original_processinternal);
 }
 
 void OnDLLProcessAttach()
@@ -131,10 +138,6 @@ void OnDLLProcessAttach()
 	// Make sure all detours attaches are placed BEFORE this call
 	// Make sure UFunctionHooks objects are created AFTER this call
 	auto error{DetourTransactionCommit()};
-
-	processevent_hooks = UFunctionHooks<ProcessEventPrototype>(original_processevent);
-	processinternal_hooks = UFunctionHooks<ProcessInternalPrototype>(original_processinternal);
-	callfunction_hooks = UFunctionHooks<CallFunctionPrototype>(original_callfunction);
 
 	PerformUFunctionHooks();
 
