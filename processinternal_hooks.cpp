@@ -5,7 +5,7 @@
 #include "processinternal_hooks.hpp"
 #include "lag_compensation.hpp"
 
-PROCESSINTERNAL_HOOK(TrProjectileHurtRadiusInternal)
+UE3_PROCESSINTERNAL_HOOK(TrProjectileHurtRadiusInternal)
 {
 	auto projectile{reinterpret_cast<Projectile *>(calling_uobject)};
 
@@ -40,7 +40,7 @@ PROCESSINTERNAL_HOOK(TrProjectileHurtRadiusInternal)
 	lag_compensation.DestroyLagCompensationData(projectile);
 }
 
-PROCESSINTERNAL_HOOK(TrProjectilePostBeginPlay)
+UE3_PROCESSINTERNAL_HOOK(TrProjectilePostBeginPlay)
 {
 	auto projectile{reinterpret_cast<Projectile *>(calling_uobject)};
 
@@ -53,14 +53,14 @@ PROCESSINTERNAL_HOOK(TrProjectilePostBeginPlay)
 	}
 }
 
-PROCESSINTERNAL_HOOK(UTProjectileDestroyed)
+UE3_PROCESSINTERNAL_HOOK(UTProjectileDestroyed)
 {
 	auto projectile{reinterpret_cast<Projectile *>(calling_uobject)};
 	static auto &lag_compensation{LagCompensation::GetInstance()};
 	lag_compensation.DestroyLagCompensationData(projectile);
 }
 
-PROCESSINTERNAL_HOOK(TrPawnDied)
+UE3_PROCESSINTERNAL_HOOK(TrPawnDied)
 {
 	auto player{reinterpret_cast<Player *>(calling_uobject)};
 	static auto &lag_compensation{LagCompensation::GetInstance()};

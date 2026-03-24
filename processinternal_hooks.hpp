@@ -2,8 +2,10 @@
 
 #include <uhook.hpp>
 
-PROCESSINTERNAL_HOOK(TrProjectileHurtRadiusInternal);
-PROCESSINTERNAL_HOOK(UTGameMatchInProgressBeginState);
-PROCESSINTERNAL_HOOK(TrProjectilePostBeginPlay);
-PROCESSINTERNAL_HOOK(UTProjectileDestroyed);
-PROCESSINTERNAL_HOOK(TrPawnDied);
+using namespace UE3;
+
+UE3_PROCESSINTERNAL_HOOK(TrProjectileHurtRadiusInternal);
+UE3_PROCESSINTERNAL_HOOK(UTGameMatchInProgressBeginState);
+UE3_PROCESSINTERNAL_HOOK(TrProjectilePostBeginPlay);
+UE3_PROCESSINTERNAL_HOOK(UTProjectileDestroyed);
+UE3_PROCESSINTERNAL_HOOK(TrPawnDied);

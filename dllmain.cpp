@@ -21,6 +21,10 @@
 #include "native_hooks.hpp"
 #include "lag_compensation.hpp"
 
+#include "SdkHeaders.h"
+
+using namespace UE3;
+
 // #define HOOK_CALLFUNCTION
 #define LOG_FILE_NAME "LagCompensationLog.txt"
 
@@ -28,49 +32,40 @@ constexpr size_t kProcessEventAddress{0x00456F90};
 constexpr size_t kProcessInternalAddress{0x00459040};
 constexpr size_t kCallFunctionAddress{0x0045AD20};
 
-void ValidateUFunctionHookResult(const HookResult &hook_result, const std::string &name, const bool is_absorbing)
+void SetupUFunctionHooks(size_t base_address)
 {
-	switch (hook_result)
+	log_function = [](const std::string &log_string)
+	{ PLOG_VERBOSE << log_string; };
+
+	get_ufunction_from_name = [](const std::string &ufunction_name)
 	{
-	case HookResult::kSuccess:
+		return reinterpret_cast<UFunction *>(UObject::FindObject<UFunction>(ufunction_name.c_str()));
+	};
+
+	get_ufunction_id = [](const UFunction *ufunction_object)
 	{
-		PLOG_INFO << std::format("Successfully hooked {0}{1}", name, is_absorbing ? " [ABSORBING]" : "");
-		break;
-	}
-	case HookResult::kFailedIncorrectHookTypeAndHookAbsorb:
+		return ufunction_object->ObjectInternalInteger;
+	};
+
+	get_uobject_name = [](UObject *uobject_object)
 	{
-		PLOG_ERROR << std::format("Failed to hook {0} due to incorrect hook type and hook absorb", name);
-		break;
-	}
-	case HookResult::kFailedToFindUFunction:
+		return uobject_object->GetFullName();
+	};
+
+	is_ufunction_native = [](const UFunction *ufunction_object)
 	{
-		PLOG_ERROR << std::format("Failed to hook {0} as the UFunction was not found", name);
-		break;
-	}
-	case HookResult::kFailedUFunctionOutOfBounds:
-	{
-		PLOG_ERROR << std::format("Failed to hook {0} as the UFunction index was out of bounds", name);
-		break;
-	}
-	case HookResult::kFailedOverMaxHookCount:
-	{
-		PLOG_ERROR << std::format("Failed to hook {0} as the UFunction already has maximum number of hooks", name);
-		break;
-	}
-	case HookResult::kFailedUnknownHookType:
-	{
-		PLOG_ERROR << std::format("Failed to hook {0} due to unknown hook type", name);
-		break;
-	}
-	default:
-	{
-		PLOG_ERROR << std::format("Hooking {0} resulted in unhandled behaviour", name);
-		break;
-	}
-	}
+		static constexpr unsigned int kFUNC_Native{0x00000400};
+		auto is_native{ufunction_object->iNative};
+		auto is_funcnative{ufunction_object->FunctionFlags & kFUNC_Native};
+		return is_native || is_funcnative;
+	};
+
+	original_processevent = reinterpret_cast<ProcessEventPrototype>(kProcessEventAddress);
+	original_processinternal = reinterpret_cast<ProcessInternalPrototype>(kProcessInternalAddress);
+	original_callfunction = reinterpret_cast<CallFunctionPrototype>(kCallFunctionAddress);
 }
 
-void PerformUFunctionHooks()
+void PerformUFunctionHooks(void)
 {
 	std::vector<UFunctionHooks<ProcessInternalPrototype>::UFunctionHookInformation> processinternal_hooks_informations{
 		// When a projectile is created
@@ -85,9 +80,7 @@ void PerformUFunctionHooks()
 	for (const auto &ufunction_hook_information : processinternal_hooks_informations)
 	{
 		const auto result{processinternal_hooks.AddHook(ufunction_hook_information)};
-		ValidateUFunctionHookResult(result,
-									ufunction_hook_information.name_,
-									ufunction_hook_information.hook_absorb_ == FunctionHookAbsorb::kAbsorb);
+		ValidateUFunctionHookResult(result, ufunction_hook_information);
 	}
 
 	processinternal_hooks.SetOriginalFunction(original_processinternal);
@@ -109,9 +102,7 @@ void OnDLLProcessAttach()
 	PLOG_INFO << std::format("Successfully Injected DLL");
 	PLOG_INFO << std::format("Base address: {0}", reinterpret_cast<void *>(base_address));
 
-	original_processevent = reinterpret_cast<ProcessEventPrototype>(kProcessEventAddress);
-	original_processinternal = reinterpret_cast<ProcessInternalPrototype>(kProcessInternalAddress);
-	original_callfunction = reinterpret_cast<CallFunctionPrototype>(kCallFunctionAddress);
+	SetupUFunctionHooks(base_address);
 
 	DetourTransactionBegin();
 	DetourUpdateThread(GetCurrentThread());
