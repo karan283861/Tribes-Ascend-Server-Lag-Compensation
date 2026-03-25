@@ -106,7 +106,7 @@ void LagCompensation::UpdatePlayer(Player *player)
 	PlayerInformation::PlayerTickInformation player_tick_information{};
 	player_tick_information.location_ = player->Location;
 	player_tick_information.velocity_ = player->Velocity;
-	player_information->tick_information_.push_back(std::move(player_tick_information));
+	player_information->tick_information_.PushBack(std::move(player_tick_information));
 }
 
 void LagCompensation::Tick(float DeltaSeconds, ELevelTick TickType)
@@ -153,10 +153,10 @@ bool LagCompensation::RewindPlayers(Ping ping_in_ms)
 		if (IsPlayerValid(player))
 		{
 			auto player_information{reinterpret_cast<PlayerInformation *>(GetLagCompensationData(player))};
-			if (prev_index < player_information->tick_information_.size())
+			if (prev_index < player_information->tick_information_.Size())
 			{
-				const auto &tick_location{player_information->tick_information_.at(tick_index).location_};
-				const auto &prev_location{player_information->tick_information_.at(prev_index).location_};
+				const auto &tick_location{player_information->tick_information_.At(tick_index).location_};
+				const auto &prev_location{player_information->tick_information_.At(prev_index).location_};
 
 				auto delta{Subtract_VectorVector(prev_location, tick_location)};
 				auto interpolate_scalar{ms_remainder / tick_delta_in_ms_};
@@ -176,7 +176,7 @@ void LagCompensation::RestorePlayers(void)
 		if (IsPlayerValid(player))
 		{
 			auto player_information{reinterpret_cast<PlayerInformation *>(GetLagCompensationData(player))};
-			player->SetLocation(player_information->tick_information_.back().location_);
+			player->SetLocation(player_information->tick_information_.Back().location_);
 		}
 	}
 }

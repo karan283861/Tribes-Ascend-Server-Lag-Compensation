@@ -26,7 +26,7 @@ UE3_PROCESSINTERNAL_HOOK(TrProjectileHurtRadiusInternal)
 	if (rewind && projectile_information->is_owning_player_still_valid_)
 	{
 		auto player_information{reinterpret_cast<LagCompensation::PlayerInformation *>(lag_compensation.GetLagCompensationData(projectile_information->owning_player_))};
-		projectile_information->owning_player_->SetLocation(player_information->tick_information_.back().location_);
+		projectile_information->owning_player_->SetLocation(player_information->tick_information_.Back().location_);
 	}
 
 	// Apply splash (radial) damage.

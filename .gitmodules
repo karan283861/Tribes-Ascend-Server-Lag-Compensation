@@ -10,3 +10,6 @@
 [submodule "Unreal-UFunction-Hook"]
 	path = Unreal-UFunction-Hook
 	url = git@github.com:karan283861/Unreal-UFunction-Hook.git
+[submodule "Circular-Buffer"]
+	path = Circular-Buffer
+	url = git@github.com:karan283861/Circular-Buffer.git

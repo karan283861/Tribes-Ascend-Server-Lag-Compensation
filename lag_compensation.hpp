@@ -5,7 +5,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include "Tribes-Ascend-SDK/SdkHeaders.h"
-#include "circular_buffer.hpp"
+#include "Circular-Buffer/circular_buffer.hpp"
 #include "helper.hpp"
 #include "native_hooks.hpp"
 
