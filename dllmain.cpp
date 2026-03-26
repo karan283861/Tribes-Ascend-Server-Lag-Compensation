@@ -67,6 +67,9 @@ void SetupUFunctionHooks(size_t base_address)
 
 void PerformUFunctionHooks(void)
 {
+	// TODO: Look into directly hooking via replacing UFunction::Func
+	// That will greatly reduce the amount of hooking related code executing in hot functions
+	// (especially if multiple dlls are injected into the process which all use same hot functions)
 	std::vector<UFunctionHooks<ProcessInternalPrototype>::UFunctionHookInformation> processinternal_hooks_informations{
 		// When a projectile is created
 		{.name_ = "Function TribesGame.TrProjectile.PostBeginPlay", .hook_function_ = TrProjectilePostBeginPlay, .hook_type_ = FunctionHookType::kPost},
