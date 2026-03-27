@@ -42,21 +42,23 @@ void SetupUFunctionHooks(size_t base_address)
 		return reinterpret_cast<UFunction *>(UObject::FindObject<UFunction>(ufunction_name.c_str()));
 	};
 
-	get_ufunction_id = [](const UFunction *ufunction_object)
+	get_ufunction_id = [](UFunctionInternal *ufunction_object)
 	{
-		return ufunction_object->ObjectInternalInteger;
+		return reinterpret_cast<UFunction *>(ufunction_object)->ObjectInternalInteger;
 	};
 
-	get_uobject_name = [](UObject *uobject_object)
+	get_uobject_name = [](UObjectInternal *uobject_object)
 	{
-		return uobject_object->GetFullName();
+		return reinterpret_cast<UObject *>(uobject_object)->GetFullName();
 	};
 
-	is_ufunction_native = [](const UFunction *ufunction_object)
+	is_ufunction_native = [](UFunctionInternal *ufunction_object)
 	{
 		static constexpr unsigned int kFUNC_Native{0x00000400};
-		auto is_native{ufunction_object->iNative};
-		auto is_funcnative{ufunction_object->FunctionFlags & kFUNC_Native};
+		auto ufunction{reinterpret_cast<UFunction *>(ufunction_object)};
+
+		auto is_native{ufunction->iNative};
+		auto is_funcnative{ufunction->FunctionFlags & kFUNC_Native};
 		return is_native || is_funcnative;
 	};
 
