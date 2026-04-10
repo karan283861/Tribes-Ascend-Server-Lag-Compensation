@@ -153,7 +153,7 @@ bool LagCompensation::RewindPlayers(Ping ping_in_ms)
 		if (IsPlayerValid(player))
 		{
 			auto player_information{reinterpret_cast<PlayerInformation *>(GetLagCompensationData(player))};
-			if (prev_index < player_information->tick_information_.Size())
+			if (player_information && prev_index < player_information->tick_information_.Size())
 			{
 				const auto &tick_location{player_information->tick_information_.At(tick_index).location_};
 				const auto &prev_location{player_information->tick_information_.At(prev_index).location_};
@@ -175,8 +175,10 @@ void LagCompensation::RestorePlayers(void)
 	{
 		if (IsPlayerValid(player))
 		{
-			auto player_information{reinterpret_cast<PlayerInformation *>(GetLagCompensationData(player))};
-			player->SetLocation(player_information->tick_information_.Back().location_);
+			if (auto player_information{reinterpret_cast<PlayerInformation *>(GetLagCompensationData(player))})
+			{
+				player->SetLocation(player_information->tick_information_.Back().location_);
+			}
 		}
 	}
 }

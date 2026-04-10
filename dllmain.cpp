@@ -85,7 +85,7 @@ void PerformUFunctionHooks(void)
 	for (const auto &ufunction_hook_information : processinternal_hooks_informations)
 	{
 		const auto result{processinternal_hooks.AddHook(ufunction_hook_information)};
-		ValidateUFunctionHookResult(result, ufunction_hook_information);
+		PLOG_INFO << ValidateUFunctionHookResult(result, ufunction_hook_information);
 	}
 
 	processinternal_hooks.SetOriginalFunction(original_processinternal);
@@ -95,13 +95,15 @@ void OnDLLProcessAttach()
 {
 	auto base_address{reinterpret_cast<size_t>(GetModuleHandle(0))};
 
+#if defined(_DEBUG)
 	std::filesystem::remove(LOG_FILE_NAME);
 
-#if defined(_DEBUG)
 	static plog::RollingFileAppender<plog::TxtFormatter> file_appender(LOG_FILE_NAME);
 	plog::init(plog::info, &file_appender);
 #else
-	static plog::RollingFileAppender<plog::TxtFormatter> file_appender(LOG_FILE_NAME);
+	auto now{std::chrono::system_clock::now()};
+	auto log_with_date_string{std::format("ServerLagCompensation-{:%d-%m-%Y_%H-%M-%S}.txt", now)};
+	static plog::RollingFileAppender<plog::TxtFormatter> file_appender(log_with_date_string.c_str());
 	plog::init(plog::info, &file_appender);
 #endif
 	PLOG_INFO << std::format("Successfully Injected DLL");
