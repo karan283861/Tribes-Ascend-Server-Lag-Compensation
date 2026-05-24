@@ -29,7 +29,7 @@ public:
 	static inline float tick_rate_{30.0f};
 	static inline float tick_delta_in_ms_{1000.0f / tick_rate_};
 	// Basically, the lag compensation buffer should be able to compensate for at least this ping
-	static constexpr Ping window_in_ms_{2000.0f};
+	static constexpr Ping window_in_ms_{400.0f};
 	// Don't perform lag compensation for any ping less than this
 	static constexpr Ping kMinimumPingThreshold{4.0f};
 	// The + 2 is neccessary to ensure we can compensate for between (kMinimumPingThreshold, window_in_ms_]
