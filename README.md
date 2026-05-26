@@ -167,7 +167,7 @@ Some techniques keep the per-tick overhead to a minimum:
 
 ### Benchmark
 
-<img width="900" height="750" alt="Image" src="https://github.com/user-attachments/assets/8c0bcf68-54d3-4514-abfb-7cce95ac1990" />
+<img width="900" height="750" alt="Image" src="https://github.com/user-attachments/assets/9294534b-82b7-40bb-ab09-828cf5161748" />
 
 ---
 
