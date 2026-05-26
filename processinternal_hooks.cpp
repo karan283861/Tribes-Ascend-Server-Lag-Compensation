@@ -1,10 +1,11 @@
 #include <format>
 #include <plog/Log.h>
+#include <SdkHeaders.h>
 #include "helper.hpp"
 #include "processinternal_hooks.hpp"
 #include "lag_compensation.hpp"
 
-PROCESSINTERNAL_HOOK(TrProjectileHurtRadiusInternal)
+UE3_PROCESSINTERNAL_HOOK(TrProjectileHurtRadiusInternal)
 {
 	auto projectile{reinterpret_cast<Projectile *>(calling_uobject)};
 
@@ -25,7 +26,10 @@ PROCESSINTERNAL_HOOK(TrProjectileHurtRadiusInternal)
 	if (rewind && projectile_information->is_owning_player_still_valid_)
 	{
 		auto player_information{reinterpret_cast<LagCompensation::PlayerInformation *>(lag_compensation.GetLagCompensationData(projectile_information->owning_player_))};
-		projectile_information->owning_player_->SetLocation(player_information->tick_information_.back().location_);
+		if (player_information)
+		{
+			projectile_information->owning_player_->SetLocation(player_information->tick_information_.Back().location_);
+		}
 	}
 
 	// Apply splash (radial) damage.
@@ -39,7 +43,7 @@ PROCESSINTERNAL_HOOK(TrProjectileHurtRadiusInternal)
 	lag_compensation.DestroyLagCompensationData(projectile);
 }
 
-PROCESSINTERNAL_HOOK(TrProjectilePostBeginPlay)
+UE3_PROCESSINTERNAL_HOOK(TrProjectilePostBeginPlay)
 {
 	auto projectile{reinterpret_cast<Projectile *>(calling_uobject)};
 
@@ -52,17 +56,16 @@ PROCESSINTERNAL_HOOK(TrProjectilePostBeginPlay)
 	}
 }
 
-PROCESSINTERNAL_HOOK(UTProjectileDestroyed)
+UE3_PROCESSINTERNAL_HOOK(UTProjectileDestroyed)
 {
-	static auto &lag_compensation{LagCompensation::GetInstance()};
 	auto projectile{reinterpret_cast<Projectile *>(calling_uobject)};
+	static auto &lag_compensation{LagCompensation::GetInstance()};
 	lag_compensation.DestroyLagCompensationData(projectile);
 }
 
-PROCESSINTERNAL_HOOK(TrPawnDied)
+UE3_PROCESSINTERNAL_HOOK(TrPawnDied)
 {
 	auto player{reinterpret_cast<Player *>(calling_uobject)};
 	static auto &lag_compensation{LagCompensation::GetInstance()};
-
 	lag_compensation.DestroyLagCompensationData(player);
 }

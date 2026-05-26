@@ -19,16 +19,18 @@ add_library(${PROJECT_NAME} SHARED dllmain.cpp)
 target_include_directories(${PROJECT_NAME} PRIVATE 
     "plog/include"
     "Tribes-Ascend-SDK"
+    "Unreal-UFunction-Hook"
 )
 
 # Source files
 target_sources(${PROJECT_NAME} PRIVATE
     dllmain.cpp
     helper.cpp
-    hook.cpp
     lag_compensation.cpp
     native_hooks.cpp
-    processInternal_hooks.cpp
+    processinternal_hooks.cpp
+
+    Unreal-UFunction-Hook/uhook.cpp
     
     # SDK Sources
     Tribes-Ascend-SDK/SDK_SOURCES/Core_functions.cpp

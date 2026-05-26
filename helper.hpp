@@ -2,7 +2,7 @@
 
 #include <string>
 #include <vector>
-#include "Tribes-Ascend-SDK/SdkHeaders.h"
+#include <SdkHeaders.h>
 
 using Projectile = ATrProjectile;
 using Player = ATrPlayerPawn;
@@ -17,8 +17,6 @@ bool IsPlayerValid(Player *player);
 FVector Add_VectorVector(const FVector &A, const FVector &B);
 FVector Subtract_VectorVector(const FVector &A, const FVector &B);
 FVector Multiply_VectorFloat(const FVector &A, const float &B);
-
-std::string PrintVector(const FVector &v);
 
 // Get all instances of a specific UObject type in the GObjects buffer.
 template <class T>

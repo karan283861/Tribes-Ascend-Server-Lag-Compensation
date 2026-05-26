@@ -8,9 +8,7 @@ LagCompensation::ActorInformation::~ActorInformation(void)
 
 LagCompensation::ActorInformation *LagCompensation::IsActorLagCompensated(AActor *actor, ActorId filtered_actor_id = ActorId::kAny)
 {
-	auto actor_information{GetLagCompensationData(actor)};
-
-	if (actor_information)
+	if (auto actor_information{GetLagCompensationData(actor)})
 	{
 		if (filtered_actor_id == ActorId::kAny)
 		{
@@ -90,8 +88,7 @@ LagCompensation::ActorInformation *LagCompensation::LagCompensate(Projectile *pr
 
 void LagCompensation::DestroyLagCompensationData(AActor *actor)
 {
-	auto information{GetLagCompensationData(actor)};
-	if (information)
+	if (auto information{GetLagCompensationData(actor)})
 	{
 		delete information;
 		*reinterpret_cast<ActorInformation **>(&actor->EditorIconColor) = nullptr;
@@ -109,7 +106,7 @@ void LagCompensation::UpdatePlayer(Player *player)
 	PlayerInformation::PlayerTickInformation player_tick_information{};
 	player_tick_information.location_ = player->Location;
 	player_tick_information.velocity_ = player->Velocity;
-	player_information->tick_information_.push_back(std::move(player_tick_information));
+	player_information->tick_information_.PushBack(std::move(player_tick_information));
 }
 
 void LagCompensation::Tick(float DeltaSeconds, ELevelTick TickType)
@@ -156,10 +153,10 @@ bool LagCompensation::RewindPlayers(Ping ping_in_ms)
 		if (IsPlayerValid(player))
 		{
 			auto player_information{reinterpret_cast<PlayerInformation *>(GetLagCompensationData(player))};
-			if (prev_index < player_information->tick_information_.size())
+			if (player_information && prev_index < player_information->tick_information_.Size())
 			{
-				const auto &tick_location{player_information->tick_information_.at(tick_index).location_};
-				const auto &prev_location{player_information->tick_information_.at(prev_index).location_};
+				const auto &tick_location{player_information->tick_information_.At(tick_index).location_};
+				const auto &prev_location{player_information->tick_information_.At(prev_index).location_};
 
 				auto delta{Subtract_VectorVector(prev_location, tick_location)};
 				auto interpolate_scalar{ms_remainder / tick_delta_in_ms_};
@@ -178,8 +175,40 @@ void LagCompensation::RestorePlayers(void)
 	{
 		if (IsPlayerValid(player))
 		{
-			auto player_information{reinterpret_cast<PlayerInformation *>(GetLagCompensationData(player))};
-			player->SetLocation(player_information->tick_information_.back().location_);
+			if (auto player_information{reinterpret_cast<PlayerInformation *>(GetLagCompensationData(player))})
+			{
+				player->SetLocation(player_information->tick_information_.Back().location_);
+			}
 		}
+	}
+}
+
+void LagCompensation::UpdateTickRateVariables(void)
+{
+	auto net_drivers{GetInstancesUObjects<UNetDriver>()};
+	// Keep a set of tick rates assigned to each NetDriver
+	auto set_of_tick_rates = std::unordered_set<float>();
+	for (auto &net_driver : net_drivers)
+	{
+		if (net_driver->NetServerMaxTickRate)
+		{
+			set_of_tick_rates.insert(net_driver->NetServerMaxTickRate);
+		}
+	}
+	if (set_of_tick_rates.size() > 1)
+	{
+		// Multiple NetDrivers found, with different tick rates
+		PLOG_ERROR << std::format("Conflicting NetDriver Tick Rates found. Using default tick rate of {0}.", tick_rate_);
+	}
+	else if (set_of_tick_rates.size() == 0)
+	{
+		PLOG_ERROR << std::format("No NetDrivers found. Using default tick rate of {0}.", tick_rate_);
+	}
+	else
+	{
+		tick_rate_ = *set_of_tick_rates.begin();
+		tick_delta_in_ms_ = 1000.0f / tick_rate_;
+		buffer_size_ = static_cast<size_t>((window_in_ms_ / tick_delta_in_ms_) + 2);
+		PLOG_INFO << std::format("Set tick rate to {0}", tick_rate_);
 	}
 }

@@ -1,12 +1,11 @@
 #pragma once
 
-#include "Tribes-Ascend-SDK/SdkHeaders.h"
-#include "hook.hpp"
+#include <uhook.hpp>
 
-#define PROCESSINTERNAL_HOOK(functionHookName) void __fastcall functionHookName(UObject *calling_uobject, void *unused, FFrame &stack, void *result)
+using namespace UE3;
 
-PROCESSINTERNAL_HOOK(TrProjectileHurtRadiusInternal);
-PROCESSINTERNAL_HOOK(UTGameMatchInProgressBeginState);
-PROCESSINTERNAL_HOOK(TrProjectilePostBeginPlay);
-PROCESSINTERNAL_HOOK(UTProjectileDestroyed);
-PROCESSINTERNAL_HOOK(TrPawnDied);
+UE3_PROCESSINTERNAL_HOOK(TrProjectileHurtRadiusInternal);
+UE3_PROCESSINTERNAL_HOOK(UTGameMatchInProgressBeginState);
+UE3_PROCESSINTERNAL_HOOK(TrProjectilePostBeginPlay);
+UE3_PROCESSINTERNAL_HOOK(UTProjectileDestroyed);
+UE3_PROCESSINTERNAL_HOOK(TrPawnDied);

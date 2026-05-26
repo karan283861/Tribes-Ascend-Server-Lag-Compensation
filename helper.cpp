@@ -7,7 +7,6 @@ bool IsPlayerValid(Player *player)
 	{
 		return true;
 	}
-	PLOG_DEBUG << "Player is no longer valid";
 	return false;
 }
 
@@ -24,11 +23,6 @@ FVector Subtract_VectorVector(const FVector &A, const FVector &B)
 FVector Multiply_VectorFloat(const FVector &A, const float &B)
 {
 	return FVector{A.X * B, A.Y * B, A.Z * B};
-}
-
-std::string PrintVector(const FVector &v)
-{
-	return std::string("X = ").append(std::to_string(v.X)).append(", Y = ").append(std::to_string(v.Y)).append(", Z = ").append(std::to_string(v.Z));
 }
 
 extern const UClass *kControllerClass{Controller::StaticClass()};
