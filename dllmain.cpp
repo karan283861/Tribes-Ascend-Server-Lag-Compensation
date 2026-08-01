@@ -1,133 +1,69 @@
 #include <Windows.h>
 #include <chrono>
-#include <filesystem>
 #include <format>
-#include <fstream>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include <plog/Appenders/ColorConsoleAppender.h>
 #include <plog/Appenders/RollingFileAppender.h>
 #include <plog/Formatters/TxtFormatter.h>
 #include <plog/Init.h>
 #include <plog/Log.h>
-#ifndef _DEBUG
-// #define PLOG_DISABLE_LOGGING
-#endif
 
 #include "Detours/include/detours.h"
 
-#include "helper.hpp"
-#include <uhook.hpp>
 #include "processinternal_hooks.hpp"
 #include "native_hooks.hpp"
-#include "lag_compensation.hpp"
-
-#include "SdkHeaders.h"
-
-using namespace UE3;
-
-// #define HOOK_CALLFUNCTION
-#define LOG_FILE_NAME "LagCompensationLog.txt"
+#include "uhook.hpp"
 
 constexpr size_t kProcessEventAddress{0x00456F90};
 constexpr size_t kProcessInternalAddress{0x00459040};
 constexpr size_t kCallFunctionAddress{0x0045AD20};
 
-void SetupUFunctionHooks(size_t base_address)
-{
-	log_function = [](const std::string &log_string)
-	{ PLOG_VERBOSE << log_string; };
-
-	get_ufunction_from_name = [](const std::string &ufunction_name)
-	{
-		return reinterpret_cast<UFunction *>(UObject::FindObject<UFunction>(ufunction_name.c_str()));
-	};
-
-	get_ufunction_id = [](UFunctionInternal *ufunction_object)
-	{
-		return reinterpret_cast<UFunction *>(ufunction_object)->ObjectInternalInteger;
-	};
-
-	get_uobject_name = [](UObjectInternal *uobject_object)
-	{
-		return reinterpret_cast<UObject *>(uobject_object)->GetFullName();
-	};
-
-	is_ufunction_native = [](UFunctionInternal *ufunction_object)
-	{
-		static constexpr unsigned int kFUNC_Native{0x00000400};
-		auto ufunction{reinterpret_cast<UFunction *>(ufunction_object)};
-
-		auto is_native{ufunction->iNative};
-		auto is_funcnative{ufunction->FunctionFlags & kFUNC_Native};
-		return is_native || is_funcnative;
-	};
-
-	original_processevent = reinterpret_cast<ProcessEventPrototype>(kProcessEventAddress);
-	original_processinternal = reinterpret_cast<ProcessInternalPrototype>(kProcessInternalAddress);
-	original_callfunction = reinterpret_cast<CallFunctionPrototype>(kCallFunctionAddress);
-}
-
 void PerformUFunctionHooks(void)
 {
-	// TODO: Look into directly hooking via replacing UFunction::Func
-	// That will greatly reduce the amount of hooking related code executing in hot functions
-	// (especially if multiple dlls are injected into the process which all use same hot functions)
-	std::vector<UFunctionHooks<ProcessInternalPrototype>::UFunctionHookInformation> processinternal_hooks_informations{
-		// When a projectile is created
-		{.name_ = "Function TribesGame.TrProjectile.PostBeginPlay", .hook_function_ = TrProjectilePostBeginPlay, .hook_type_ = FunctionHookType::kPost},
-		// When a projectile is destroyed
-		{.name_ = "Function UTGame.UTProjectile.Destroyed", .hook_function_ = UTProjectileDestroyed, .hook_type_ = FunctionHookType::kPost},
-		// When a projectile explodes to cause radial (splash) damage
-		{.name_ = "Function TribesGame.TrProjectile.HurtRadius_Internal", .hook_function_ = TrProjectileHurtRadiusInternal, .hook_type_ = FunctionHookType::kPre, .hook_absorb_ = FunctionHookAbsorb::kAbsorb},
-		// When a player pawn dies
-		{.name_ = "Function TribesGame.TrPawn.Died", .hook_function_ = TrPawnDied, .hook_type_ = FunctionHookType::kPre}};
+	std::vector<std::pair<std::string, ProcessInternalPrototype>> ufunctions_to_hook{{"Function TribesGame.TrProjectile.PostBeginPlay", TrProjectilePostBeginPlay},
+																					 {"Function UTGame.UTProjectile.Destroyed", UTProjectileDestroyed},
+																					 {"Function TribesGame.TrProjectile.HurtRadius_Internal", TrProjectileHurtRadiusInternal},
+																					 {"Function TribesGame.TrPawn.Died", TrPawnDied}};
 
-	for (const auto &ufunction_hook_information : processinternal_hooks_informations)
+	auto get_ufunction = [](const std::string &ufunction_name)
 	{
-		const auto result{processinternal_hooks.AddHook(ufunction_hook_information)};
-		PLOG_INFO << ValidateUFunctionHookResult(result, ufunction_hook_information);
-	}
+		return UObject::FindObject<UFunction>(ufunction_name.c_str());
+	};
 
-	processinternal_hooks.SetOriginalFunction(original_processinternal);
+	for (const auto [ufunction_name, hook_function] : ufunctions_to_hook)
+	{
+		auto ufunction_object{get_ufunction(ufunction_name)};
+		if (!ufunction_object)
+		{
+			PLOG_ERROR << std::format("Failed to find UFunction {} by name", ufunction_name);
+			continue;
+		}
+		ufunction_object->Func = hook_function; // Abosrbing
+		PLOG_INFO << std::format("Successfully hooked {0}", ufunction_name);
+	}
 }
 
 void OnDLLProcessAttach()
 {
 	auto base_address{reinterpret_cast<size_t>(GetModuleHandle(0))};
 
-#if defined(_DEBUG)
-	std::filesystem::remove(LOG_FILE_NAME);
-
-	static plog::RollingFileAppender<plog::TxtFormatter> file_appender(LOG_FILE_NAME);
-	plog::init(plog::info, &file_appender);
-#else
 	auto now{std::chrono::system_clock::now()};
 	auto log_with_date_string{std::format("ServerLagCompensation-{:%d-%m-%Y_%H-%M-%S}.txt", now)};
 	static plog::RollingFileAppender<plog::TxtFormatter> file_appender(log_with_date_string.c_str());
 	plog::init(plog::info, &file_appender);
-#endif
-	PLOG_INFO << std::format("Successfully Injected DLL");
-	PLOG_INFO << std::format("Base address: {0}", reinterpret_cast<void *>(base_address));
 
-	SetupUFunctionHooks(base_address);
+	PLOG_INFO << std::format("Successfully Injected DLL");
+	PLOG_INFO << std::format("Base address: {0}", reinterpret_cast<void*>(base_address));
+
+	original_processinternal = reinterpret_cast<ProcessInternalPrototype>(kProcessInternalAddress);
 
 	DetourTransactionBegin();
 	DetourUpdateThread(GetCurrentThread());
 
-#if defined(_DEBUG)
-	DetourAttach(&(PVOID &)original_processevent, ProcessEventHook);
-#endif
-
-	DetourAttach(&(PVOID &)original_processinternal, ProcessInternalHook);
-
-	// For some reason multiple hooks on CallFunction (eg. multiple injected dlls) causes buggy behaviour/crashes.
-	// We should really only hook CallFunction when tracing UFunctions in the logs (ie. debugging)
-#if defined(_DEBUG) && defined(HOOK_CALLFUNCTION)
-	DetourAttach(&(PVOID &)original_callfunction, CallFunctionHook);
-#endif
-
 	// Hook native functions
-
 	// Perform lag compensation after all actors have ticked
 	DetourAttach(&(PVOID &)original_tickactors_preasyncwork, TickActorsPreAsyncWorkHook);
 	// Prevent ticking of lag compensated projectiles AND store player information per tick
@@ -138,9 +74,6 @@ void OnDLLProcessAttach()
 	auto error{DetourTransactionCommit()};
 
 	PerformUFunctionHooks();
-
-	static auto &lag_compensation{LagCompensation::GetInstance()};
-	lag_compensation.UpdateTickRateVariables();
 }
 
 BOOL APIENTRY DllMain(HMODULE hModule,

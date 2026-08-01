@@ -1,4 +1,3 @@
-#include <algorithm>
 #include <format>
 #include <plog/Log.h>
 #include "helper.hpp"
@@ -8,7 +7,7 @@
 static auto prevent_projectiles_from_ticking{false};
 
 TickActorsPreAsyncWorkPrototype original_tickactors_preasyncwork = reinterpret_cast<TickActorsPreAsyncWorkPrototype>(kTickActorsPreAsyncWorkAddress);
-void TickActorsPreAsyncWorkHook(UWorld *world, float delta_seconds,
+void TickActorsPreAsyncWorkHook(UWorld* world, float delta_seconds,
 								ELevelTick tick_type, FDeferredTickList &deferred_list)
 {
 	static auto &lag_compensation{LagCompensation::GetInstance()};
@@ -23,15 +22,15 @@ void TickActorsPreAsyncWorkHook(UWorld *world, float delta_seconds,
 }
 
 ActorTickPrototype original_actor_tick = reinterpret_cast<ActorTickPrototype>(kActorTickAddress);
-void __fastcall ActorTickHook(AActor *actor, void *unused, float delta_seconds, ELevelTick tick_type)
+void __fastcall ActorTickHook(AActor* actor, void* unused, float delta_seconds, ELevelTick tick_type)
 {
 	static const auto kPlayerClass{Player::StaticClass()};
 	static auto &lag_compensation{LagCompensation::GetInstance()};
 
-	auto projectile{reinterpret_cast<Projectile *>(actor)};
-	auto player{reinterpret_cast<Player *>(actor)};
+	auto projectile{reinterpret_cast<Projectile*>(actor)};
+	auto player{reinterpret_cast<Player*>(actor)};
 
-	LagCompensation::ActorInformation *actor_information{};
+	LagCompensation::ActorInformation<Projectile>* projectile_information{};
 
 	// NOTE: Do NOT use IsA function in any repeatedly called function - it's expensive.
 	if (actor->Class == kPlayerClass && IsPlayerValid(player))
@@ -41,9 +40,8 @@ void __fastcall ActorTickHook(AActor *actor, void *unused, float delta_seconds, 
 		lag_compensation.list_of_players_in_latest_tick_.push_back(player);
 		return;
 	}
-	else if (prevent_projectiles_from_ticking && (actor_information = lag_compensation.IsActorLagCompensated(projectile, LagCompensation::ActorId::kProjectile)))
+	else if (prevent_projectiles_from_ticking && (projectile_information = lag_compensation.GetActorInformation<true>(projectile)))
 	{
-		auto projectile_information{reinterpret_cast<LagCompensation::ProjectileInformation *>(actor_information)};
 		if (projectile_information->is_owning_player_still_valid_ && !IsPlayerValid(projectile_information->owning_player_))
 		{
 			projectile_information->is_owning_player_still_valid_ = false;

@@ -2,55 +2,9 @@
 #include <plog/Log.h>
 #include "lag_compensation.hpp"
 
-LagCompensation::ActorInformation::~ActorInformation(void)
+LagCompensation::ActorObjectPoolTraits<Projectile>::InformationType* LagCompensation::AddProjectile(Projectile* projectile)
 {
-}
-
-LagCompensation::ActorInformation *LagCompensation::IsActorLagCompensated(AActor *actor, ActorId filtered_actor_id = ActorId::kAny)
-{
-	if (auto actor_information{GetLagCompensationData(actor)})
-	{
-		if (filtered_actor_id == ActorId::kAny)
-		{
-			if (actor_information->actor_id_ != ActorId::kUnknown && actor_information->actor_id_ < ActorId::kAny)
-			{
-				return actor_information;
-			}
-		}
-		else if (filtered_actor_id != ActorId::kUnknown)
-		{
-			if (actor_information->actor_id_ == filtered_actor_id)
-			{
-				return actor_information;
-			}
-		}
-	}
-
-	return nullptr;
-}
-
-LagCompensation::ActorInformation *LagCompensation::GetLagCompensationData(AActor *actor)
-{
-	return *reinterpret_cast<ActorInformation **>(&actor->EditorIconColor);
-}
-
-LagCompensation::ActorInformation *LagCompensation::LagCompensate(Controller *controller)
-{
-	auto controller_information{new ControllerInformation};
-	memcpy(&controller->EditorIconColor, &controller_information, sizeof(size_t));
-	return controller_information;
-}
-
-LagCompensation::ActorInformation *LagCompensation::LagCompensate(Player *player)
-{
-	auto player_information{new PlayerInformation};
-	memcpy(&player->EditorIconColor, &player_information, sizeof(size_t));
-	return player_information;
-}
-
-LagCompensation::ActorInformation *LagCompensation::LagCompensate(Projectile *projectile)
-{
-	auto controller{reinterpret_cast<Controller *>(projectile->InstigatorController)};
+	auto controller{reinterpret_cast<Controller*>(projectile->InstigatorController)};
 
 	auto ping_in_ms{controller->PlayerReplicationInfo->ExactPing * 4};
 
@@ -60,13 +14,13 @@ LagCompensation::ActorInformation *LagCompensation::LagCompensate(Projectile *pr
 		return nullptr;
 	}
 
-	auto projectile_information{new ProjectileInformation};
-	memcpy(&projectile->EditorIconColor, &projectile_information, sizeof(size_t));
-	projectile_information->owning_player_ = reinterpret_cast<Player *>(controller->Pawn);
+	auto projectile_information{AllocateActorInformation(projectile)};
+	projectile_information->owning_player_ = reinterpret_cast<Player*>(controller->Pawn);
 	projectile_information->ping_in_ms_ = ping_in_ms;
 	projectile_information->is_owning_player_still_valid_ = IsPlayerValid(projectile_information->owning_player_);
+	projectile_information->team_ = projectile_information->owning_player_->PlayerReplicationInfo->Team->TeamIndex;
 
-	auto controller_information{reinterpret_cast<ControllerInformation *>(GetLagCompensationData(controller))};
+	auto controller_information{GetActorInformation(controller)};
 	if (controller_information)
 	{
 		if (abs(controller_information->last_ping_in_ms_ - projectile_information->ping_in_ms_) <= kMaxPingDelta)
@@ -80,33 +34,41 @@ LagCompensation::ActorInformation *LagCompensation::LagCompensate(Projectile *pr
 	}
 	else
 	{
-		controller_information = reinterpret_cast<ControllerInformation *>(LagCompensate(controller));
+		controller_information = AllocateActorInformation(controller);
 		controller_information->last_ping_in_ms_ = projectile_information->ping_in_ms_;
 	}
+
 	return projectile_information;
 }
 
-void LagCompensation::DestroyLagCompensationData(AActor *actor)
+LagCompensation::ActorObjectPoolTraits<Player>::InformationType* LagCompensation::UpdatePlayer(Player* player)
 {
-	if (auto information{GetLagCompensationData(actor)})
-	{
-		delete information;
-		*reinterpret_cast<ActorInformation **>(&actor->EditorIconColor) = nullptr;
-	}
-}
+	auto projectile{reinterpret_cast<Projectile*>(player)};
+	auto x1 = GetActorInformationIndex(projectile);
+	auto x2 = GetActorInformation(projectile);
+	auto x3 = AllocateActorInformation(projectile);
+	FreeActorInformation(projectile);
 
-void LagCompensation::UpdatePlayer(Player *player)
-{
-	auto player_information{reinterpret_cast<PlayerInformation *>(GetLagCompensationData(player))};
+	auto player2{reinterpret_cast<Player*>(player)};
+	auto x12 = GetActorInformationIndex(player2);
+	auto x22 = GetActorInformation(player2);
+	auto x32 = AllocateActorInformation(player2);
+	FreeActorInformation(player2);
+
+	// Remove above
+
+	auto player_information{GetActorInformation(player)};
 	if (!player_information)
 	{
-		player_information = reinterpret_cast<PlayerInformation *>(LagCompensate(player));
+		player_information = AllocateActorInformation(player);
 	}
 
-	PlayerInformation::PlayerTickInformation player_tick_information{};
+	ActorInformation<Player>::PlayerTickInformation player_tick_information{};
 	player_tick_information.location_ = player->Location;
 	player_tick_information.velocity_ = player->Velocity;
 	player_information->tick_information_.PushBack(std::move(player_tick_information));
+	player_information->team_ = player->PlayerReplicationInfo->Team->TeamIndex;
+	return player_information;
 }
 
 void LagCompensation::Tick(float DeltaSeconds, ELevelTick TickType)
@@ -146,26 +108,26 @@ bool LagCompensation::RewindPlayers(Ping ping_in_ms)
 {
 	auto tick_index{static_cast<int>(ping_in_ms / tick_delta_in_ms_)};
 	auto prev_index{tick_index + 1};
-	auto ms_remainder{fmod(ping_in_ms, tick_delta_in_ms_)};
 
 	for (auto &player : list_of_players_in_latest_tick_)
 	{
 		if (IsPlayerValid(player))
 		{
-			auto player_information{reinterpret_cast<PlayerInformation *>(GetLagCompensationData(player))};
+			auto player_information{GetActorInformation(player)};
 			if (player_information && prev_index < player_information->tick_information_.Size())
 			{
-				const auto &tick_location{player_information->tick_information_.At(tick_index).location_};
-				const auto &prev_location{player_information->tick_information_.At(prev_index).location_};
+				const auto &tick_location{player_information->tick_information_[tick_index].location_};
+				const auto &prev_location{player_information->tick_information_[prev_index].location_};
 
 				auto delta{Subtract_VectorVector(prev_location, tick_location)};
-				auto interpolate_scalar{ms_remainder / tick_delta_in_ms_};
+				static constexpr auto interpolate_scalar{0.5};
 				auto interpolated_location{Add_VectorVector(tick_location,
 															Multiply_VectorFloat(delta, interpolate_scalar))};
 				player->SetLocation(interpolated_location);
 			}
 		}
 	}
+
 	return true;
 }
 
@@ -175,40 +137,10 @@ void LagCompensation::RestorePlayers(void)
 	{
 		if (IsPlayerValid(player))
 		{
-			if (auto player_information{reinterpret_cast<PlayerInformation *>(GetLagCompensationData(player))})
+			if (auto player_information{GetActorInformation(player)})
 			{
-				player->SetLocation(player_information->tick_information_.Back().location_);
+				player->SetLocation(player_information->tick_information_[0].location_);
 			}
 		}
-	}
-}
-
-void LagCompensation::UpdateTickRateVariables(void)
-{
-	auto net_drivers{GetInstancesUObjects<UNetDriver>()};
-	// Keep a set of tick rates assigned to each NetDriver
-	auto set_of_tick_rates = std::unordered_set<float>();
-	for (auto &net_driver : net_drivers)
-	{
-		if (net_driver->NetServerMaxTickRate)
-		{
-			set_of_tick_rates.insert(net_driver->NetServerMaxTickRate);
-		}
-	}
-	if (set_of_tick_rates.size() > 1)
-	{
-		// Multiple NetDrivers found, with different tick rates
-		PLOG_ERROR << std::format("Conflicting NetDriver Tick Rates found. Using default tick rate of {0}.", tick_rate_);
-	}
-	else if (set_of_tick_rates.size() == 0)
-	{
-		PLOG_ERROR << std::format("No NetDrivers found. Using default tick rate of {0}.", tick_rate_);
-	}
-	else
-	{
-		tick_rate_ = *set_of_tick_rates.begin();
-		tick_delta_in_ms_ = 1000.0f / tick_rate_;
-		buffer_size_ = static_cast<size_t>((window_in_ms_ / tick_delta_in_ms_) + 2);
-		PLOG_INFO << std::format("Set tick rate to {0}", tick_rate_);
 	}
 }

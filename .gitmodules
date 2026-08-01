@@ -13,3 +13,6 @@
 [submodule "Circular-Buffer"]
 	path = Circular-Buffer
 	url = git@github.com:karan283861/Circular-Buffer.git
+[submodule "Object-Pool"]
+	path = Object-Pool
+	url = git@github.com:karan283861/Object-Pool.git

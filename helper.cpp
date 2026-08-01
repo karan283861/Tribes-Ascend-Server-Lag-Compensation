@@ -25,5 +25,5 @@ FVector Multiply_VectorFloat(const FVector &A, const float &B)
 	return FVector{A.X * B, A.Y * B, A.Z * B};
 }
 
-extern const UClass *kControllerClass{Controller::StaticClass()};
-extern const UClass *kPlayerClass{Player::StaticClass()};
+const UClass *kControllerClass{Controller::StaticClass()};
+const UClass *kPlayerClass{Player::StaticClass()};
