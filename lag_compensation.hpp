@@ -43,13 +43,38 @@ class LagCompensation
 	}
 
 	protected:
-	LagCompensation(void) = default;
+	LagCompensation()
+	{
+		pings_to_tick_in_latest_tick_.reserve(window_in_ms_);
+		list_of_players_in_latest_tick_.reserve(kEstimatedMaxPlayers);
+
+		list_of_lag_compensated_projectiles_by_ping_in_latest_tick_.reserve(window_in_ms_);
+		list_of_lag_compensated_projectiles_by_ping_in_latest_tick_.resize(window_in_ms_);
+		for (auto i{std::size_t{0}}; i < list_of_lag_compensated_projectiles_by_ping_in_latest_tick_.size(); i++)
+		{
+			if (i <= kMinimumPingThreshold || i >= window_buffer_size_)
+			{
+				continue;
+			}
+
+			// Pings *SHOULD* always be a multiple of 4, so we can ignore anything not divisible 4.
+			// WARNING: This hasn't been confirmed.
+			if (i % 4 == 0)
+			{
+				list_of_lag_compensated_projectiles_by_ping_in_latest_tick_[i].reserve(kEstimatedMaxProjectilesPerPing);
+			}
+		}
+
+		team_per_ping_.reserve(window_in_ms_);
+		team_per_ping_.resize(window_in_ms_);
+		std::fill(team_per_ping_.begin(), team_per_ping_.end(), kUninitialisedTeam);
+	}
 
 	public:
 	// Tick rate - initialise to the default value of 30
 	static constexpr float tick_rate_{30.0f};
 	static constexpr float tick_delta_in_ms_{1000.0f / tick_rate_};
-	// Basically, the lag compensation buffer should be able to compensate for at least this ping
+	// Maximum ping to lag compensate ([0, window_in_ms_))
 	static constexpr Ping window_in_ms_{400.0f};
 	// Don't perform lag compensation for any ping less than this
 	static constexpr Ping kMinimumPingThreshold{4.0f};
@@ -61,13 +86,21 @@ class LagCompensation
 	// then simply use the previous ping (optimisation)
 	static constexpr Ping kMaxPingDelta{4.0f};
 
+	static constexpr size_t kEstimatedMaxControllers{64};
+	static constexpr size_t kEstimatedMaxPlayers{kEstimatedMaxControllers};
+	static constexpr size_t kEstimatedMaxProjectiles{kEstimatedMaxPlayers * 1000};
+	static constexpr size_t kEstimatedMaxProjectilesPerPing{kEstimatedMaxPlayers * 100};
+
 	// Store a list of which pings to tick (optimisation)
-	std::list<Ping> pings_to_tick_in_latest_tick_{};
-	std::vector<std::vector<Projectile*>> list_of_lag_compensated_projectiles_by_ping_in_latest_tick_ = std::vector<std::vector<Projectile*>>(window_in_ms_);
+	std::vector<Ping> pings_to_tick_in_latest_tick_{};
+	// Group projectiles into ping buckets
+	std::vector<std::vector<Projectile*>> list_of_lag_compensated_projectiles_by_ping_in_latest_tick_{};
 	// Store all players that were valid (ie. alive) in the lastest tick
 	std::vector<Player*> list_of_players_in_latest_tick_{};
-
-	DynamicIndexedObjectPool<int, true> x{3};
+	// Check if all projectiles in a ping bucket are from the same team
+	std::vector<int> team_per_ping_{};
+	static constexpr int kUninitialisedTeam{-1};
+	static constexpr int kInvalidTeam{-2};
 
 	struct ActorInformationBase
 	{
@@ -129,25 +162,30 @@ class LagCompensation
 		int team_{};
 	};
 
+	static constexpr size_t kMaxSizeOfLagCompensatedProjectilesListInMB = (sizeof(ActorInformation<Projectile>) *
+																		   kEstimatedMaxProjectilesPerPing *
+																		   window_in_ms_) /
+																		  (1024 * 1024);
+
 	template <typename ActorType>
 	struct ActorObjectPoolData;
 
 	template <>
 	struct ActorObjectPoolData<Controller>
 	{
-		static constexpr size_t InitialCapacity{128};
+		static constexpr size_t InitialCapacity{kEstimatedMaxControllers};
 	};
 
 	template <>
 	struct ActorObjectPoolData<Player>
 	{
-		static constexpr size_t InitialCapacity{128};
+		static constexpr size_t InitialCapacity{kEstimatedMaxPlayers};
 	};
 
 	template <>
 	struct ActorObjectPoolData<Projectile>
 	{
-		static constexpr size_t InitialCapacity{ActorObjectPoolData<Controller>::InitialCapacity * 1000};
+		static constexpr size_t InitialCapacity{kEstimatedMaxProjectiles};
 	};
 
 	template <typename ActorType>
@@ -211,12 +249,15 @@ class LagCompensation
 		auto index{kInvalidObjectPoolIndex};
 		do
 		{
-			object_pool.Allocate();
+			index = object_pool.Allocate();
 		} while (index == kInvalidObjectPoolIndex);
 
 		*reinterpret_cast<size_t*>(&actor->EditorIconColor) = index;
 
-		return &object_pool[index];
+		auto &actor_information{object_pool[index]};
+		actor_information.actor_ = actor;
+
+		return &actor_information;
 	}
 
 	template <typename ActorType>
@@ -227,12 +268,6 @@ class LagCompensation
 		{
 			return;
 		}
-
-		// if constexpr (kPerformErrorChecks)
-		// {
-		// 	assert(index != kInvalidObjectPoolIndex);
-		// If actor is not lag compesated, index will be invalid. This is expected and not an error.
-		// }
 
 		auto &object_pool{std::get<ObjectPoolType<ActorType>>(object_pools_)};
 		if constexpr (HasReset<typename ActorObjectPoolTraits<ActorType>::InformationType>)

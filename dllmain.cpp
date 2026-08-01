@@ -13,6 +13,7 @@
 
 #include "Detours/include/detours.h"
 
+#include "SdkHeaders.h"
 #include "processinternal_hooks.hpp"
 #include "native_hooks.hpp"
 #include "uhook.hpp"
@@ -74,6 +75,16 @@ void OnDLLProcessAttach()
 	auto error{DetourTransactionCommit()};
 
 	PerformUFunctionHooks();
+
+	auto set_location_ufunction{UObject::FindObject<UFunction>("Function Engine.Actor.SetLocation")};
+	if (set_location_ufunction)
+	{
+		PLOG_INFO << std::format("SetLocation->Func offset = {:x}", reinterpret_cast<char*>(set_location_ufunction->Func) - reinterpret_cast<char*>(base_address));
+	}
+	else
+	{
+		PLOG_ERROR << "SetLocation UFunction not found";
+	}
 }
 
 BOOL APIENTRY DllMain(HMODULE hModule,

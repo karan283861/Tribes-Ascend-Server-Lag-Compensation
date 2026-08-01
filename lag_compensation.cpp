@@ -1,6 +1,7 @@
 #include <format>
 #include <plog/Log.h>
 #include "lag_compensation.hpp"
+#include "native_hooks.hpp"
 
 LagCompensation::ActorObjectPoolTraits<Projectile>::InformationType* LagCompensation::AddProjectile(Projectile* projectile)
 {
@@ -43,20 +44,6 @@ LagCompensation::ActorObjectPoolTraits<Projectile>::InformationType* LagCompensa
 
 LagCompensation::ActorObjectPoolTraits<Player>::InformationType* LagCompensation::UpdatePlayer(Player* player)
 {
-	auto projectile{reinterpret_cast<Projectile*>(player)};
-	auto x1 = GetActorInformationIndex(projectile);
-	auto x2 = GetActorInformation(projectile);
-	auto x3 = AllocateActorInformation(projectile);
-	FreeActorInformation(projectile);
-
-	auto player2{reinterpret_cast<Player*>(player)};
-	auto x12 = GetActorInformationIndex(player2);
-	auto x22 = GetActorInformation(player2);
-	auto x32 = AllocateActorInformation(player2);
-	FreeActorInformation(player2);
-
-	// Remove above
-
 	auto player_information{GetActorInformation(player)};
 	if (!player_information)
 	{
@@ -102,10 +89,17 @@ void LagCompensation::Tick(float DeltaSeconds, ELevelTick TickType)
 
 	pings_to_tick_in_latest_tick_.clear();
 	list_of_players_in_latest_tick_.clear();
+	std::fill(team_per_ping_.begin(), team_per_ping_.end(), kUninitialisedTeam);
 }
 
 bool LagCompensation::RewindPlayers(Ping ping_in_ms)
 {
+	if (kPerformErrorChecks)
+	{
+		assert(team_per_ping_[ping_in_ms] != kUninitialisedTeam);
+	}
+
+	bool all_projectiles_are_from_same_ping_bucket{team_per_ping_[ping_in_ms] != kInvalidTeam};
 	auto tick_index{static_cast<int>(ping_in_ms / tick_delta_in_ms_)};
 	auto prev_index{tick_index + 1};
 
@@ -113,6 +107,11 @@ bool LagCompensation::RewindPlayers(Ping ping_in_ms)
 	{
 		if (IsPlayerValid(player))
 		{
+			if (all_projectiles_are_from_same_ping_bucket && team_per_ping_[ping_in_ms] == player->PlayerReplicationInfo->Team->TeamIndex)
+			{
+				continue;
+			}
+
 			auto player_information{GetActorInformation(player)};
 			if (player_information && prev_index < player_information->tick_information_.Size())
 			{
@@ -123,7 +122,8 @@ bool LagCompensation::RewindPlayers(Ping ping_in_ms)
 				static constexpr auto interpolate_scalar{0.5};
 				auto interpolated_location{Add_VectorVector(tick_location,
 															Multiply_VectorFloat(delta, interpolate_scalar))};
-				player->SetLocation(interpolated_location);
+				// player->SetLocation(interpolated_location);
+				original_world_farmoveactor(global_world, nullptr, player, interpolated_location, 0, 1, 0);
 			}
 		}
 	}
@@ -139,7 +139,8 @@ void LagCompensation::RestorePlayers(void)
 		{
 			if (auto player_information{GetActorInformation(player)})
 			{
-				player->SetLocation(player_information->tick_information_[0].location_);
+				// player->SetLocation(player_information->tick_information_[0].location_);
+				original_world_farmoveactor(global_world, nullptr, player, player_information->tick_information_[0].location_, 0, 1, 0);
 			}
 		}
 	}

@@ -1,15 +1,18 @@
 #include <format>
 #include <plog/Log.h>
+#include "SdkHeaders.h"
 #include "helper.hpp"
 #include "native_hooks.hpp"
 #include "lag_compensation.hpp"
 
 static auto prevent_projectiles_from_ticking{false};
+UWorld* global_world{};
 
-TickActorsPreAsyncWorkPrototype original_tickactors_preasyncwork = reinterpret_cast<TickActorsPreAsyncWorkPrototype>(kTickActorsPreAsyncWorkAddress);
+TickActorsPreAsyncWorkPrototype original_tickactors_preasyncwork{reinterpret_cast<TickActorsPreAsyncWorkPrototype>(kTickActorsPreAsyncWorkAddress)};
 void TickActorsPreAsyncWorkHook(UWorld* world, float delta_seconds,
 								ELevelTick tick_type, FDeferredTickList &deferred_list)
 {
+	global_world = world;
 	static auto &lag_compensation{LagCompensation::GetInstance()};
 
 	// Prevent lag compensated projectiles from ticking normally via engine calls.
@@ -21,7 +24,7 @@ void TickActorsPreAsyncWorkHook(UWorld* world, float delta_seconds,
 	lag_compensation.Tick(delta_seconds, tick_type);
 }
 
-ActorTickPrototype original_actor_tick = reinterpret_cast<ActorTickPrototype>(kActorTickAddress);
+ActorTickPrototype original_actor_tick{reinterpret_cast<ActorTickPrototype>(kActorTickAddress)};
 void __fastcall ActorTickHook(AActor* actor, void* unused, float delta_seconds, ELevelTick tick_type)
 {
 	static const auto kPlayerClass{Player::StaticClass()};
@@ -54,9 +57,20 @@ void __fastcall ActorTickHook(AActor* actor, void* unused, float delta_seconds, 
 
 		lag_compensation.list_of_lag_compensated_projectiles_by_ping_in_latest_tick_[projectile_information->ping_in_ms_].push_back(projectile);
 
+		if (lag_compensation.team_per_ping_[projectile_information->ping_in_ms_] == LagCompensation::kUninitialisedTeam)
+		{
+			lag_compensation.team_per_ping_[projectile_information->ping_in_ms_] = projectile_information->team_;
+		}
+		else if (lag_compensation.team_per_ping_[projectile_information->ping_in_ms_] != projectile_information->team_)
+		{
+			lag_compensation.team_per_ping_[projectile_information->ping_in_ms_] = LagCompensation::kInvalidTeam;
+		}
+
 		// Prevent lag compensated projectiles from ticking normally via engine calls.
 		return;
 	}
 
 	original_actor_tick(actor, nullptr, delta_seconds, tick_type);
 }
+
+WorldFarMoveActor original_world_farmoveactor{reinterpret_cast<WorldFarMoveActor>(kWorldFarMoveActorAddress)};
