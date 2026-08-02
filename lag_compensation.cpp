@@ -3,6 +3,39 @@
 #include "lag_compensation.hpp"
 #include "native_hooks.hpp"
 
+LagCompensation &LagCompensation::GetInstance(void)
+{
+	static LagCompensation lag_compensation{};
+	return lag_compensation;
+}
+
+LagCompensation::LagCompensation()
+{
+	// pings_to_tick_in_latest_tick_.reserve(window_in_ms_);
+	list_of_players_in_latest_tick_.reserve(kEstimatedMaxPlayers);
+
+	// list_of_lag_compensated_projectiles_by_ping_in_latest_tick_.reserve(window_in_ms_);
+	// list_of_lag_compensated_projectiles_by_ping_in_latest_tick_.resize(window_in_ms_);
+	for (auto i{std::size_t{0}}; i < list_of_lag_compensated_projectiles_by_ping_in_latest_tick_.size(); i++)
+	{
+		if (i <= kMinimumPingThreshold || i >= window_buffer_size_)
+		{
+			continue;
+		}
+
+		// Pings *SHOULD* always be a multiple of 4, so we can ignore anything not divisible 4.
+		// WARNING: This hasn't been confirmed.
+		if (i % 4 == 0)
+		{
+			list_of_lag_compensated_projectiles_by_ping_in_latest_tick_[i].reserve(kEstimatedMaxProjectilesPerPing);
+		}
+	}
+
+	// team_per_ping_.reserve(window_in_ms_);
+	// team_per_ping_.resize(window_in_ms_);
+	std::fill(team_per_ping_.begin(), team_per_ping_.end(), kUninitialisedTeam);
+}
+
 LagCompensation::ActorObjectPoolTraits<Projectile>::InformationType* LagCompensation::AddProjectile(Projectile* projectile)
 {
 	auto controller{reinterpret_cast<Controller*>(projectile->InstigatorController)};

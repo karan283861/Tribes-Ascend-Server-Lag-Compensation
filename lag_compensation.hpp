@@ -2,7 +2,8 @@
 
 #include <cassert>
 #include <cstddef>
-#include <list>
+#include <array>
+#include <vector>
 #include <tuple>
 #include "Tribes-Ascend-SDK/SdkHeaders.h"
 #include "Circular-Buffer/circular_buffer.hpp"
@@ -36,39 +37,10 @@ class LagCompensation
 	LagCompensation(LagCompensation &&) = delete;
 	LagCompensation &operator=(LagCompensation &&) = delete;
 
-	static LagCompensation &GetInstance(void)
-	{
-		static LagCompensation lag_compensation;
-		return lag_compensation;
-	}
+	static LagCompensation &GetInstance(void);
 
 	protected:
-	LagCompensation()
-	{
-		pings_to_tick_in_latest_tick_.reserve(window_in_ms_);
-		list_of_players_in_latest_tick_.reserve(kEstimatedMaxPlayers);
-
-		list_of_lag_compensated_projectiles_by_ping_in_latest_tick_.reserve(window_in_ms_);
-		list_of_lag_compensated_projectiles_by_ping_in_latest_tick_.resize(window_in_ms_);
-		for (auto i{std::size_t{0}}; i < list_of_lag_compensated_projectiles_by_ping_in_latest_tick_.size(); i++)
-		{
-			if (i <= kMinimumPingThreshold || i >= window_buffer_size_)
-			{
-				continue;
-			}
-
-			// Pings *SHOULD* always be a multiple of 4, so we can ignore anything not divisible 4.
-			// WARNING: This hasn't been confirmed.
-			if (i % 4 == 0)
-			{
-				list_of_lag_compensated_projectiles_by_ping_in_latest_tick_[i].reserve(kEstimatedMaxProjectilesPerPing);
-			}
-		}
-
-		team_per_ping_.reserve(window_in_ms_);
-		team_per_ping_.resize(window_in_ms_);
-		std::fill(team_per_ping_.begin(), team_per_ping_.end(), kUninitialisedTeam);
-	}
+	LagCompensation();
 
 	public:
 	// Tick rate - initialise to the default value of 30
@@ -92,13 +64,13 @@ class LagCompensation
 	static constexpr size_t kEstimatedMaxProjectilesPerPing{kEstimatedMaxPlayers * 100};
 
 	// Store a list of which pings to tick (optimisation)
-	std::vector<Ping> pings_to_tick_in_latest_tick_{};
+	std::array<Ping, static_cast<size_t>(window_in_ms_)> pings_to_tick_in_latest_tick_{};
 	// Group projectiles into ping buckets
-	std::vector<std::vector<Projectile*>> list_of_lag_compensated_projectiles_by_ping_in_latest_tick_{};
+	std::array<std::vector<Projectile*>, static_cast<size_t>(window_in_ms_)> list_of_lag_compensated_projectiles_by_ping_in_latest_tick_{};
 	// Store all players that were valid (ie. alive) in the lastest tick
 	std::vector<Player*> list_of_players_in_latest_tick_{};
 	// Check if all projectiles in a ping bucket are from the same team
-	std::vector<int> team_per_ping_{};
+	std::array<int, static_cast<int>(window_in_ms_)> team_per_ping_{};
 	static constexpr int kUninitialisedTeam{-1};
 	static constexpr int kInvalidTeam{-2};
 
@@ -165,7 +137,7 @@ class LagCompensation
 	static constexpr size_t kMaxSizeOfLagCompensatedProjectilesListInMB = (sizeof(ActorInformation<Projectile>) *
 																		   kEstimatedMaxProjectilesPerPing *
 																		   window_in_ms_) /
-																		  (1024 * 1024);
+																		  (1024 * 1024) / 4;
 
 	template <typename ActorType>
 	struct ActorObjectPoolData;

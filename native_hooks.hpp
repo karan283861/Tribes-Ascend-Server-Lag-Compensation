@@ -21,6 +21,5 @@ void __fastcall ActorTickHook(AActor* actor, void* unused, float delta_seconds, 
 
 using WorldFarMoveActor = unsigned int(__fastcall*)(UWorld* world, void* unused, AActor* Actor, const FVector &DestLocation, unsigned int test, unsigned int bNoCheck, unsigned int bAttachedMove);
 extern WorldFarMoveActor original_world_farmoveactor;
-// unsigned int __fastcall WorldFarMoveActorHook(UWorld* world, void* unused, AActor* Actor, const FVector &DestLocation, unsigned int test, unsigned int bNoCheck, unsigned int bAttachedMove);
 
 extern UWorld* global_world;

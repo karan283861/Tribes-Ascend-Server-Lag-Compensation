@@ -1,7 +1,7 @@
 #include <plog/Log.h>
 #include "helper.hpp"
 
-bool IsPlayerValid(Player *player)
+bool IsPlayerValid(Player* player)
 {
 	if (player && player->PlayerReplicationInfo && player->Health && !player->bDeleteMe)
 	{
@@ -25,5 +25,5 @@ FVector Multiply_VectorFloat(const FVector &A, const float &B)
 	return FVector{A.X * B, A.Y * B, A.Z * B};
 }
 
-const UClass *kControllerClass{Controller::StaticClass()};
-const UClass *kPlayerClass{Player::StaticClass()};
+const UClass* kControllerClass{Controller::StaticClass()};
+const UClass* kPlayerClass{Player::StaticClass()};
