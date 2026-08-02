@@ -36,36 +36,20 @@ void __fastcall ActorTickHook(AActor* actor, void* unused, float delta_seconds, 
 	LagCompensation::ActorInformation<Projectile>* projectile_information{};
 
 	// NOTE: Do NOT use IsA function in any repeatedly called function - it's expensive.
-	if (actor->Class == kPlayerClass && IsPlayerValid(player))
+	if (actor->Class == kPlayerClass)
 	{
+		// Tick first, then handle for lag compensation.
 		original_actor_tick(actor, nullptr, delta_seconds, tick_type);
-		lag_compensation.UpdatePlayer(player);
-		lag_compensation.list_of_players_in_latest_tick_.push_back(player);
+		// Player may have become invalid during their tick (e.g. disconnected)
+		if (IsPlayerValid(player))
+		{
+			lag_compensation.OnActorTick(player);
+		}
 		return;
 	}
 	else if (prevent_projectiles_from_ticking && (projectile_information = lag_compensation.GetActorInformation<true>(projectile)))
 	{
-		if (projectile_information->is_owning_player_still_valid_ && !IsPlayerValid(projectile_information->owning_player_))
-		{
-			projectile_information->is_owning_player_still_valid_ = false;
-		}
-
-		if (lag_compensation.list_of_lag_compensated_projectiles_by_ping_in_latest_tick_[projectile_information->ping_in_ms_].size() == 0)
-		{
-			lag_compensation.pings_to_tick_in_latest_tick_.push_back(projectile_information->ping_in_ms_);
-		}
-
-		lag_compensation.list_of_lag_compensated_projectiles_by_ping_in_latest_tick_[projectile_information->ping_in_ms_].push_back(projectile);
-
-		if (lag_compensation.team_per_ping_[projectile_information->ping_in_ms_] == LagCompensation::kUninitialisedTeam)
-		{
-			lag_compensation.team_per_ping_[projectile_information->ping_in_ms_] = projectile_information->team_;
-		}
-		else if (lag_compensation.team_per_ping_[projectile_information->ping_in_ms_] != projectile_information->team_)
-		{
-			lag_compensation.team_per_ping_[projectile_information->ping_in_ms_] = LagCompensation::kInvalidTeam;
-		}
-
+		lag_compensation.OnActorTick(projectile);
 		// Prevent lag compensated projectiles from ticking normally via engine calls.
 		return;
 	}

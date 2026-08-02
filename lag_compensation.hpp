@@ -5,7 +5,7 @@
 #include <array>
 #include <vector>
 #include <tuple>
-#include "Tribes-Ascend-SDK/SdkHeaders.h"
+#include "SdkHeaders.h"
 #include "Circular-Buffer/circular_buffer.hpp"
 #include "helper.hpp"
 #include "native_hooks.hpp"
@@ -24,7 +24,7 @@ void Reset(T &t)
 
 class LagCompensation
 {
-#if defined(_DEBUG)
+#if defined(_DEBUG) || true
 	static constexpr bool kPerformErrorChecks = true;
 #else
 	static constexpr bool kPerformErrorChecks = false;
@@ -42,7 +42,7 @@ class LagCompensation
 	protected:
 	LagCompensation();
 
-	public:
+	private:
 	// Tick rate - initialise to the default value of 30
 	static constexpr float tick_rate_{30.0f};
 	static constexpr float tick_delta_in_ms_{1000.0f / tick_rate_};
@@ -64,7 +64,7 @@ class LagCompensation
 	static constexpr size_t kEstimatedMaxProjectilesPerPing{kEstimatedMaxPlayers * 100};
 
 	// Store a list of which pings to tick (optimisation)
-	std::array<Ping, static_cast<size_t>(window_in_ms_)> pings_to_tick_in_latest_tick_{};
+	std::vector<Ping> pings_to_tick_in_latest_tick_{};
 	// Group projectiles into ping buckets
 	std::array<std::vector<Projectile*>, static_cast<size_t>(window_in_ms_)> list_of_lag_compensated_projectiles_by_ping_in_latest_tick_{};
 	// Store all players that were valid (ie. alive) in the lastest tick
@@ -74,16 +74,7 @@ class LagCompensation
 	static constexpr int kUninitialisedTeam{-1};
 	static constexpr int kInvalidTeam{-2};
 
-	struct ActorInformationBase
-	{
-		ActorInformationBase(const ActorInformationBase &) = delete;
-		ActorInformationBase &operator=(const ActorInformationBase &) = delete;
-		ActorInformationBase(ActorInformationBase &&) = default;
-		ActorInformationBase &operator=(ActorInformationBase &&) = default;
-		AActor* actor_{};
-		ActorInformationBase() = default;
-	};
-
+	private:
 	template <typename Element, size_t Capacity, bool PerformErrorChecks = kPerformErrorChecks>
 	class ManagedCircularBuffer : public CircularBuffer<Element, Capacity, PerformErrorChecks>
 	{
@@ -95,6 +86,19 @@ class LagCompensation
 			this->size_ = 0;
 			this->write_index_ = 0;
 		}
+	};
+
+	static constexpr size_t kInvalidObjectPoolIndex{0};
+
+	public:
+	struct ActorInformationBase
+	{
+		ActorInformationBase(const ActorInformationBase &) = delete;
+		ActorInformationBase &operator=(const ActorInformationBase &) = delete;
+		ActorInformationBase(ActorInformationBase &&) = default;
+		ActorInformationBase &operator=(ActorInformationBase &&) = default;
+		AActor* actor_{};
+		ActorInformationBase() = default;
 	};
 
 	template <typename ActorType>
@@ -115,7 +119,7 @@ class LagCompensation
 			FVector location_{};
 			FVector velocity_{};
 		};
-		int team_{};
+		int team_{kInvalidTeam};
 		ManagedCircularBuffer<PlayerTickInformation, window_buffer_size_> tick_information_{};
 		void Reset(void)
 		{
@@ -123,22 +127,16 @@ class LagCompensation
 		}
 	};
 
-	static_assert(HasReset<ActorInformation<Player>>);
-
 	template <>
 	struct ActorInformation<Projectile> : public ActorInformationBase
 	{
 		Player* owning_player_{};
 		bool is_owning_player_still_valid_{};
 		Ping ping_in_ms_{};
-		int team_{};
+		int team_{kInvalidTeam};
 	};
 
-	static constexpr size_t kMaxSizeOfLagCompensatedProjectilesListInMB = (sizeof(ActorInformation<Projectile>) *
-																		   kEstimatedMaxProjectilesPerPing *
-																		   window_in_ms_) /
-																		  (1024 * 1024) / 4;
-
+	private:
 	template <typename ActorType>
 	struct ActorObjectPoolData;
 
@@ -171,98 +169,121 @@ class LagCompensation
 	template <typename ActorType>
 	using ObjectPoolType = ActorObjectPoolTraits<ActorType>::ObjectPoolType;
 
-	std::tuple<ObjectPoolType<Controller>, ObjectPoolType<Player>, ObjectPoolType<Projectile>> object_pools_ = std::make_tuple(ObjectPoolType<Controller>(ActorObjectPoolTraits<Controller>::InitialCapacity),
-																															   ObjectPoolType<Player>(ActorObjectPoolTraits<Player>::InitialCapacity),
-																															   ObjectPoolType<Projectile>(ActorObjectPoolTraits<Projectile>::InitialCapacity));
-
-	static constexpr size_t kInvalidObjectPoolIndex{0};
+	std::tuple<ObjectPoolType<Controller>, ObjectPoolType<Player>, ObjectPoolType<Projectile>> object_pools_ = std::make_tuple(CreateObjectPool<Controller>(),
+																															   CreateObjectPool<Player>(),
+																															   CreateObjectPool<Projectile>());
 
 	template <typename ActorType>
-	size_t GetActorInformationIndex(ActorType* actor)
-	{
-		auto index{*reinterpret_cast<size_t*>(&actor->EditorIconColor)};
-		return index;
-	}
+	ObjectPoolType<ActorType> CreateObjectPool(void);
+
+	template <typename ActorType>
+	size_t GetActorInformationIndex(ActorType* actor);
+
+	public:
+	template <typename ActorType>
+	ActorObjectPoolTraits<ActorType>::InformationType* AllocateActorInformation(ActorType* actor);
 
 	template <bool CheckActorBelongsToPool = false, typename ActorType>
-	ActorObjectPoolTraits<ActorType>::InformationType* GetActorInformation(ActorType* actor)
-	{
-		auto index{GetActorInformationIndex(actor)};
-		if (index == kInvalidObjectPoolIndex)
-		{
-			return nullptr;
-		}
-
-		auto &object_pool{std::get<ObjectPoolType<ActorType>>(object_pools_)};
-		auto actor_information{object_pool.At(index)};
-		if (!actor_information)
-		{
-			return nullptr;
-		}
-
-		if constexpr (CheckActorBelongsToPool)
-		{
-			return actor == actor_information->actor_ ? actor_information : nullptr;
-		}
-		else
-		{
-			return actor_information;
-		}
-	}
+	ActorObjectPoolTraits<ActorType>::InformationType* GetActorInformation(ActorType* actor);
 
 	template <typename ActorType>
-	ActorObjectPoolTraits<ActorType>::InformationType* AllocateActorInformation(ActorType* actor)
-	{
-		auto &object_pool{std::get<ObjectPoolType<ActorType>>(object_pools_)};
-		if constexpr (kPerformErrorChecks)
-		{
-			assert(GetActorInformationIndex(actor) == kInvalidObjectPoolIndex);
-		}
-		auto index{kInvalidObjectPoolIndex};
-		do
-		{
-			index = object_pool.Allocate();
-		} while (index == kInvalidObjectPoolIndex);
-
-		*reinterpret_cast<size_t*>(&actor->EditorIconColor) = index;
-
-		auto &actor_information{object_pool[index]};
-		actor_information.actor_ = actor;
-
-		return &actor_information;
-	}
+	void FreeActorInformation(ActorType* actor);
 
 	template <typename ActorType>
-	void FreeActorInformation(ActorType* actor)
-	{
-		auto index{GetActorInformationIndex(actor)};
-		if (index == kInvalidObjectPoolIndex)
-		{
-			return;
-		}
-
-		auto &object_pool{std::get<ObjectPoolType<ActorType>>(object_pools_)};
-		if constexpr (HasReset<typename ActorObjectPoolTraits<ActorType>::InformationType>)
-		{
-			object_pool.Free<false>(index);
-			object_pool[index].Reset();
-		}
-		else
-		{
-			object_pool.Free<true>(index);
-		}
-
-		// This is necessary. A projectile can be destroyed in TrProjectileHurtRadiusInternal.
-		// If we don't set the index back to an invalid value, UTProjectileDestroyed may call
-		// this function again which is pointless AND erroneous because we will free the index
-		// in the object pool again (this index will be added back into the list of free indexes).
-		*reinterpret_cast<size_t*>(&actor->EditorIconColor) = kInvalidObjectPoolIndex;
-	}
+	void OnActorTick(ActorType* actor);
 
 	ActorObjectPoolTraits<Projectile>::InformationType* AddProjectile(Projectile* projectile);
-	ActorObjectPoolTraits<Player>::InformationType* UpdatePlayer(Player* player);
-
 	bool RewindPlayers(Ping ping_in_ms);
 	void RestorePlayers(void);
 	void Tick(float DeltaSeconds, ELevelTick TickType);
 };
+
+template <typename ActorType>
+LagCompensation::ObjectPoolType<ActorType> LagCompensation::CreateObjectPool(void)
+{
+	using ObjectPoolType = ObjectPoolType<ActorType>;
+	using ActorObjectPoolData = ActorObjectPoolTraits<ActorType>::ObjectPoolData;
+	return ObjectPoolType(ActorObjectPoolData::InitialCapacity);
+}
+
+template <typename ActorType>
+size_t LagCompensation::GetActorInformationIndex(ActorType* actor)
+{
+	auto index{*reinterpret_cast<size_t*>(&actor->EditorIconColor)};
+	return index;
+}
+
+template <typename ActorType>
+LagCompensation::ActorObjectPoolTraits<ActorType>::InformationType* LagCompensation::AllocateActorInformation(ActorType* actor)
+{
+	auto &object_pool{std::get<ObjectPoolType<ActorType>>(object_pools_)};
+	if constexpr (kPerformErrorChecks)
+	{
+		assert(GetActorInformationIndex(actor) == kInvalidObjectPoolIndex);
+	}
+	auto index{kInvalidObjectPoolIndex};
+	do
+	{
+		index = object_pool.Allocate();
+	} while (index == kInvalidObjectPoolIndex);
+
+	*reinterpret_cast<size_t*>(&actor->EditorIconColor) = index;
+
+	auto &actor_information{object_pool[index]};
+	actor_information.actor_ = actor;
+
+	return &actor_information;
+}
+
+template <bool CheckActorBelongsToPool, typename ActorType>
+LagCompensation::ActorObjectPoolTraits<ActorType>::InformationType* LagCompensation::GetActorInformation(ActorType* actor)
+{
+	auto index{GetActorInformationIndex(actor)};
+	if (index == kInvalidObjectPoolIndex)
+	{
+		return nullptr;
+	}
+
+	auto &object_pool{std::get<ObjectPoolType<ActorType>>(object_pools_)};
+	auto actor_information{object_pool.At(index)};
+	if (!actor_information)
+	{
+		return nullptr;
+	}
+
+	if constexpr (CheckActorBelongsToPool)
+	{
+		return actor == actor_information->actor_ ? actor_information : nullptr;
+	}
+	else
+	{
+		return actor_information;
+	}
+}
+
+template <typename ActorType>
+void LagCompensation::FreeActorInformation(ActorType* actor)
+{
+	auto index{GetActorInformationIndex(actor)};
+	if (index == kInvalidObjectPoolIndex)
+	{
+		return;
+	}
+
+	auto &object_pool{std::get<ObjectPoolType<ActorType>>(object_pools_)};
+	if constexpr (HasReset<typename ActorObjectPoolTraits<ActorType>::InformationType>)
+	{
+		object_pool.Free<false>(index);
+		object_pool[index].Reset();
+	}
+	else
+	{
+		object_pool.Free<true>(index);
+	}
+
+	// This is necessary. A projectile can be destroyed in TrProjectileHurtRadiusInternal.
+	// If we don't set the index back to an invalid value, UTProjectileDestroyed may call
+	// this function again which is pointless AND erroneous because we will free the index
+	// in the object pool again (this index will be added back into the list of free indexes).
+	*reinterpret_cast<size_t*>(&actor->EditorIconColor) = kInvalidObjectPoolIndex;
+}
