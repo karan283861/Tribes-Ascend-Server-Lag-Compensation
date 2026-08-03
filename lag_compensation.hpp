@@ -1,10 +1,10 @@
 #pragma once
 
-#include <cassert>
 #include <cstddef>
 #include <array>
 #include <vector>
 #include <tuple>
+#include <cassert>
 #include "SdkHeaders.h"
 #include "Circular-Buffer/circular_buffer.hpp"
 #include "helper.hpp"
@@ -24,7 +24,7 @@ void Reset(T &t)
 
 class LagCompensation
 {
-#if defined(_DEBUG) || true
+#if defined(PERFORM_ERROR_CHECKS)
 	static constexpr bool kPerformErrorChecks = true;
 #else
 	static constexpr bool kPerformErrorChecks = false;
