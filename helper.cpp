@@ -3,7 +3,7 @@
 
 bool IsPlayerValid(Player* player)
 {
-	if (player && player->PlayerReplicationInfo && player->PlayerReplicationInfo->Team && player->Health && !player->bDeleteMe)
+	if (player && player->PlayerReplicationInfo /*&& player->PlayerReplicationInfo->Team*/ && player->Health && !player->bDeleteMe)
 	{
 		return true;
 	}

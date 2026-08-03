@@ -17,6 +17,8 @@
 #include "native_hooks.hpp"
 #include "uhook.hpp"
 
+#include <SdkHeaders.h>
+
 constexpr size_t kProcessEventAddress{0x00456F90};
 constexpr size_t kProcessInternalAddress{0x00459040};
 constexpr size_t kCallFunctionAddress{0x0045AD20};

@@ -56,7 +56,10 @@ LagCompensation::ActorObjectPoolTraits<Projectile>::InformationType* LagCompensa
 	projectile_information->owning_player_ = reinterpret_cast<Player*>(controller->Pawn);
 	projectile_information->ping_in_ms_ = ping_in_ms;
 	projectile_information->is_owning_player_still_valid_ = IsPlayerValid(projectile_information->owning_player_);
-	projectile_information->team_ = projectile_information->owning_player_->PlayerReplicationInfo->Team->TeamIndex;
+	if (projectile_information->owning_player_->PlayerReplicationInfo->Team)
+	{
+		projectile_information->team_ = projectile_information->owning_player_->PlayerReplicationInfo->Team->TeamIndex;
+	}
 
 	auto controller_information{GetActorInformation(controller)};
 	if (controller_information)
@@ -118,6 +121,8 @@ void LagCompensation::OnActorTick(Player* player)
 	player_tick_information.location_ = player->Location;
 	player_tick_information.velocity_ = player->Velocity;
 	player_information->tick_information_.PushBack(std::move(player_tick_information));
+
+	// Apparently the Team pointer can be null.
 	if (player->PlayerReplicationInfo->Team)
 	{
 		player_information->team_ = player->PlayerReplicationInfo->Team->TeamIndex;
@@ -141,7 +146,7 @@ bool LagCompensation::RewindPlayers(Ping ping_in_ms)
 	{
 		if (IsPlayerValid(player))
 		{
-			if (all_projectiles_are_from_same_ping_bucket && team_per_ping_[ping_in_ms] == player->PlayerReplicationInfo->Team->TeamIndex)
+			if (all_projectiles_are_from_same_ping_bucket && player->PlayerReplicationInfo->Team && team_per_ping_[ping_in_ms] == player->PlayerReplicationInfo->Team->TeamIndex)
 			{
 				continue;
 			}

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "SdkHeaders.h"
+#include <SdkHeaders.h>
 
 inline constexpr size_t kTickActorsPreAsyncWorkAddress{0x00801d10};
 inline constexpr size_t kActorTickAddress{0x00802b10};
