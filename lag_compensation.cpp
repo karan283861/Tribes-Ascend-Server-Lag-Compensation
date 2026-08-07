@@ -1,6 +1,7 @@
 #include <format>
 #include <plog/Log.h>
 #include "lag_compensation.hpp"
+#include "helper.hpp"
 #include "native_hooks.hpp"
 
 LagCompensation &LagCompensation::GetInstance(void)
@@ -11,8 +12,6 @@ LagCompensation &LagCompensation::GetInstance(void)
 
 LagCompensation::LagCompensation()
 {
-
-	CreateObjectPool<Player>();
 	// TODO: Remove commented lines below
 
 	pings_to_tick_in_latest_tick_.reserve(window_in_ms_);
@@ -42,9 +41,18 @@ LagCompensation::LagCompensation()
 
 LagCompensation::ActorObjectPoolTraits<Projectile>::InformationType* LagCompensation::AddProjectile(Projectile* projectile)
 {
+	auto instigator{reinterpret_cast<Controller*>(projectile->Instigator)};
 	auto controller{reinterpret_cast<Controller*>(projectile->InstigatorController)};
 
+	// Check the controller and instigator is of the right type
+	// The instigator may not be a Player (e.g. could be a vehicle or any other type of Pawn)
+	if (!(IsValid(controller) && Is<Controller>(controller) && IsValid(instigator) && Is<Player>(instigator)))
+	{
+		return nullptr;
+	}
+
 	auto ping_in_ms{controller->PlayerReplicationInfo->ExactPing * 4};
+	Team team{controller->PlayerReplicationInfo->Team->TeamIndex};
 
 	// Only lag compensate if ping is within our lag compensation windows AND the player has simulated projectiles ENABLED
 	if (ping_in_ms <= kMinimumPingThreshold || ping_in_ms >= window_in_ms_ || !controller->m_bAllowSimulatedProjectiles)
@@ -53,13 +61,8 @@ LagCompensation::ActorObjectPoolTraits<Projectile>::InformationType* LagCompensa
 	}
 
 	auto projectile_information{AllocateActorInformation(projectile)};
-	projectile_information->owning_player_ = reinterpret_cast<Player*>(controller->Pawn);
 	projectile_information->ping_in_ms_ = ping_in_ms;
-	projectile_information->is_owning_player_still_valid_ = IsPlayerValid(projectile_information->owning_player_);
-	if (projectile_information->owning_player_->PlayerReplicationInfo->Team)
-	{
-		projectile_information->team_ = projectile_information->owning_player_->PlayerReplicationInfo->Team->TeamIndex;
-	}
+	projectile_information->team_ = team;
 
 	auto controller_information{GetActorInformation(controller)};
 	if (controller_information)
@@ -85,11 +88,10 @@ LagCompensation::ActorObjectPoolTraits<Projectile>::InformationType* LagCompensa
 template <>
 void LagCompensation::OnActorTick(Projectile* projectile)
 {
+	// Right now we're checking if the projectile is valid in native hook prior to calling this
+	// So we don't need to perform validation in here (unlike OnActorTick<Player>)
+
 	auto projectile_information{GetActorInformation(projectile)};
-	if (projectile_information->is_owning_player_still_valid_ && !IsPlayerValid(projectile_information->owning_player_))
-	{
-		projectile_information->is_owning_player_still_valid_ = false;
-	}
 
 	if (list_of_lag_compensated_projectiles_by_ping_in_latest_tick_[projectile_information->ping_in_ms_].size() == 0)
 	{
@@ -111,6 +113,14 @@ void LagCompensation::OnActorTick(Projectile* projectile)
 template <>
 void LagCompensation::OnActorTick(Player* player)
 {
+	auto controller{reinterpret_cast<Controller*>(player->Controller)};
+
+	// It could be possible that a player has Died but isn't Destroy'ed so it's still ticking
+	if (!IsValid(player) || !IsValid(controller))
+	{
+		return;
+	}
+
 	auto player_information{GetActorInformation(player)};
 	if (!player_information)
 	{
@@ -121,12 +131,7 @@ void LagCompensation::OnActorTick(Player* player)
 	player_tick_information.location_ = player->Location;
 	player_tick_information.velocity_ = player->Velocity;
 	player_information->tick_information_.PushBack(std::move(player_tick_information));
-
-	// Apparently the Team pointer can be null.
-	if (player->PlayerReplicationInfo->Team)
-	{
-		player_information->team_ = player->PlayerReplicationInfo->Team->TeamIndex;
-	}
+	player_information->team_ = controller->PlayerReplicationInfo->Team->TeamIndex;
 
 	list_of_players_in_latest_tick_.push_back(player);
 }
@@ -144,7 +149,7 @@ bool LagCompensation::RewindPlayers(Ping ping_in_ms)
 
 	for (auto &player : list_of_players_in_latest_tick_)
 	{
-		if (IsPlayerValid(player))
+		if (IsValid(player))
 		{
 			auto player_information{GetActorInformation(player)};
 			if (all_projectiles_are_from_same_ping_bucket && player_information->team_ == team_per_ping_[ping_in_ms])
@@ -161,7 +166,6 @@ bool LagCompensation::RewindPlayers(Ping ping_in_ms)
 				static constexpr auto interpolate_scalar{0.5};
 				auto interpolated_location{Add_VectorVector(tick_location,
 															Multiply_VectorFloat(delta, interpolate_scalar))};
-				// player->SetLocation(interpolated_location);
 				original_world_farmoveactor(global_world, nullptr, player, interpolated_location, 0, 1, 0);
 			}
 		}
@@ -174,11 +178,10 @@ void LagCompensation::RestorePlayers(void)
 {
 	for (auto &player : list_of_players_in_latest_tick_)
 	{
-		if (IsPlayerValid(player))
+		if (IsValid(player))
 		{
 			if (auto player_information{GetActorInformation(player)})
 			{
-				// player->SetLocation(player_information->tick_information_[0].location_);
 				original_world_farmoveactor(global_world, nullptr, player, player_information->tick_information_[0].location_, 0, 1, 0);
 			}
 		}

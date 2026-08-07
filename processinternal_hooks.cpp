@@ -9,6 +9,7 @@
 UE3_PROCESSINTERNAL_HOOK(TrProjectileHurtRadiusInternal)
 {
 	auto projectile{reinterpret_cast<Projectile*>(calling_uobject)};
+	auto instigator{reinterpret_cast<Player*>(projectile->Instigator)};
 
 	static auto &lag_compensation{LagCompensation::GetInstance()};
 	auto projectile_information{lag_compensation.GetActorInformation(projectile)};
@@ -18,18 +19,13 @@ UE3_PROCESSINTERNAL_HOOK(TrProjectileHurtRadiusInternal)
 		return original_processinternal(calling_uobject, unused, stack, result);
 	}
 
-	if (projectile_information->is_owning_player_still_valid_ && !IsPlayerValid(projectile_information->owning_player_))
-	{
-		projectile_information->is_owning_player_still_valid_ = false;
-	}
-
 	auto rewind{lag_compensation.RewindPlayers(projectile_information->ping_in_ms_)};
-	if (rewind && projectile_information->is_owning_player_still_valid_)
+	if (rewind && IsValid(instigator))
 	{
-		auto player_information{lag_compensation.GetActorInformation(projectile_information->owning_player_)};
+		auto player_information{lag_compensation.GetActorInformation(instigator)};
 		if (player_information)
 		{
-			projectile_information->owning_player_->SetLocation(player_information->tick_information_[0].location_);
+			instigator->SetLocation(player_information->tick_information_[0].location_);
 		}
 	}
 
@@ -51,12 +47,7 @@ UE3_PROCESSINTERNAL_HOOK(TrProjectilePostBeginPlay)
 	auto projectile{reinterpret_cast<Projectile*>(calling_uobject)};
 
 	static auto &lag_compensation{LagCompensation::GetInstance()};
-
-	auto controller{reinterpret_cast<Controller*>(projectile->InstigatorController)};
-	if (controller && controller->Class == kControllerClass)
-	{
-		lag_compensation.AddProjectile(projectile);
-	}
+	lag_compensation.AddProjectile(projectile);
 }
 
 UE3_PROCESSINTERNAL_HOOK(UTProjectileDestroyed)

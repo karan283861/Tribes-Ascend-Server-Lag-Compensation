@@ -16,12 +16,6 @@ concept HasReset = requires(T &t) {
 	t.Reset();
 };
 
-template <typename T>
-void Reset(T &t)
-{
-	t.Reset();
-}
-
 class LagCompensation
 {
 #if defined(PERFORM_ERROR_CHECKS)
@@ -66,13 +60,23 @@ class LagCompensation
 	// Store a list of which pings to tick (optimisation)
 	std::vector<Ping> pings_to_tick_in_latest_tick_{};
 	// Group projectiles into ping buckets
+	// All the projectiles in this list were valid at some point in the current engine world tick
+	// There is no guarantee they will remain valid through out the whole tick, including
+	// when we need to access/use them.
+	// A projectile may have become invalid (Explode -> Destroy'ed) as the world tick continued
+	// But, they won't have been GC'd yet so we can still check if they're valid
 	std::array<std::vector<Projectile*>, static_cast<size_t>(window_in_ms_)> list_of_lag_compensated_projectiles_by_ping_in_latest_tick_{};
-	// Store all players that were valid (ie. alive) in the lastest tick
-	std::vector<Player*> list_of_players_in_latest_tick_{};
+
 	// Check if all projectiles in a ping bucket are from the same team
 	std::array<int, static_cast<int>(window_in_ms_)> team_per_ping_{};
-	static constexpr int kUninitialisedTeam{-1};
-	static constexpr int kInvalidTeam{255};
+	static constexpr Team kUninitialisedTeam{-1};
+	static constexpr Team kInvalidTeam{255};
+
+	// All the players in this list were valid (i.e. alive and not marked for desrtruction)
+	// at some point in the current engine world tick
+	// Similar to the comment above, when accessing the players in this list, the player may have
+	// become invalid (Died (but not destroyed) or Destroy'ed). Validity checks are needed
+	std::vector<Player*> list_of_players_in_latest_tick_{};
 
 	private:
 	template <typename Element, size_t Capacity, bool PerformErrorChecks = kPerformErrorChecks>
@@ -101,6 +105,12 @@ class LagCompensation
 		ActorInformationBase() = default;
 	};
 
+	// Do NOT store any caches of anything derived from the Actor class
+	// This is because (e.g. caching projectiles instigator in ActorInformation<Projectile>):
+	// 1. At any time the instigator could be marked for destruction, making it no longer valid
+	// 2. After destruction, the GC will delete the pawn data leaving the cached pointer dangling
+	// 	2.1* Once the GC deletes something, all internal references to that object should be set to nullptr
+	// If access to an actor member is needed, access that data directly when needed and ensure it's valid before using it
 	template <typename ActorType>
 	struct ActorInformation;
 
@@ -119,21 +129,19 @@ class LagCompensation
 			FVector location_{};
 			FVector velocity_{};
 		};
-		int team_{kInvalidTeam};
+		Team team_{kInvalidTeam};
 		ManagedCircularBuffer<PlayerTickInformation, window_buffer_size_> tick_information_{};
 		void Reset(void)
 		{
-			::Reset(tick_information_);
+			tick_information_.Reset();
 		}
 	};
 
 	template <>
 	struct ActorInformation<Projectile> : public ActorInformationBase
 	{
-		Player* owning_player_{};
-		bool is_owning_player_still_valid_{};
 		Ping ping_in_ms_{};
-		int team_{kInvalidTeam};
+		Team team_{kInvalidTeam};
 	};
 
 	private:
@@ -192,6 +200,9 @@ class LagCompensation
 	template <typename ActorType>
 	void OnActorTick(ActorType* actor);
 
+	// Currently there's no way optimial way to identify a Projectile in Actor::Tick hook unlike Player
+	// So we resort to checking the if the actor has an ActorInformation<Projectile> and such
+	// This function is called when a projectile is spawned so we can assigned it an ActorInformation
 	ActorObjectPoolTraits<Projectile>::InformationType* AddProjectile(Projectile* projectile);
 	bool RewindPlayers(Ping ping_in_ms);
 	void RestorePlayers(void);
@@ -281,9 +292,9 @@ void LagCompensation::FreeActorInformation(ActorType* actor)
 		object_pool.Free<true>(index);
 	}
 
-	// This is necessary. A projectile can be destroyed in TrProjectileHurtRadiusInternal.
+	// This is necessary. A projectile's actor information will be destroyed in TrProjectileHurtRadiusInternal.
 	// If we don't set the index back to an invalid value, UTProjectileDestroyed may call
 	// this function again which is pointless AND erroneous because we will free the index
-	// in the object pool again (this index will be added back into the list of free indexes).
+	// in the object pool again (this index will be re-added back into the list of free indexes).
 	*reinterpret_cast<size_t*>(&actor->EditorIconColor) = kInvalidObjectPoolIndex;
 }

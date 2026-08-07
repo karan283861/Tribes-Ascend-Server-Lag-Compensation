@@ -27,7 +27,6 @@ void TickActorsPreAsyncWorkHook(UWorld* world, float delta_seconds,
 ActorTickPrototype original_actor_tick{reinterpret_cast<ActorTickPrototype>(kActorTickAddress)};
 void __fastcall ActorTickHook(AActor* actor, void* unused, float delta_seconds, ELevelTick tick_type)
 {
-	static const auto kPlayerClass{Player::StaticClass()};
 	static auto &lag_compensation{LagCompensation::GetInstance()};
 
 	auto projectile{reinterpret_cast<Projectile*>(actor)};
@@ -35,16 +34,10 @@ void __fastcall ActorTickHook(AActor* actor, void* unused, float delta_seconds, 
 
 	LagCompensation::ActorInformation<Projectile>* projectile_information{};
 
-	// NOTE: Do NOT use IsA function in any repeatedly called function - it's expensive.
-	if (actor->Class == kPlayerClass)
+	if (Is<Player>(player))
 	{
-		// Tick first, then handle for lag compensation.
 		original_actor_tick(actor, nullptr, delta_seconds, tick_type);
-		// Player may have become invalid during their tick (e.g. disconnected)
-		if (IsPlayerValid(player))
-		{
-			lag_compensation.OnActorTick(player);
-		}
+		lag_compensation.OnActorTick(player);
 		return;
 	}
 	else if (prevent_projectiles_from_ticking && (projectile_information = lag_compensation.GetActorInformation<true>(projectile)))

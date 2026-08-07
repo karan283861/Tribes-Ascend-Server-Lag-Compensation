@@ -1,17 +1,21 @@
 #pragma once
 
-#include <string>
 #include <vector>
 #include <SdkHeaders.h>
 
-using Projectile = ATrProjectile;
-using Player = ATrPlayerPawn;
 using Controller = ATrPlayerController;
+using Player = ATrPlayerPawn;
+using Projectile = ATrProjectile;
 using Ping = float;
-using Location = FVector;
-using Flag = ATrFlagBase;
+using Team = int;
 
-bool IsPlayerValid(Player* player);
+template <typename ActorType>
+bool Is(AActor* actor);
+
+bool IsActorValid(AActor* actor);
+
+template <typename ActorType>
+bool IsValid(ActorType* actor);
 
 // Avoid using Unreal VM.
 FVector Add_VectorVector(const FVector &A, const FVector &B);
@@ -34,6 +38,3 @@ std::vector<T*> GetInstancesUObjects(void)
 	}
 	return found_uobjects;
 }
-
-extern const UClass* kControllerClass;
-extern const UClass* kPlayerClass;
