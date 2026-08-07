@@ -43,6 +43,7 @@ add_library(${PROJECT_NAME} SHARED dllmain.cpp)
 
 # Include directories
 target_include_directories(${PROJECT_NAME} PRIVATE 
+    "Detours/include"
     "plog/include"
     "Tribes-Ascend-SDK"
     "Unreal-UFunction-Hook"

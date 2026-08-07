@@ -1,3 +1,4 @@
+#include <cstdlib>
 #include <plog/Log.h>
 #include "helper.hpp"
 
@@ -11,6 +12,14 @@ template <>
 bool Is<Player>(AActor* actor)
 {
 	return actor->Class == Player::StaticClass();
+}
+
+template <>
+bool Is<Projectile>(AActor* actor)
+{
+	// WARNING: This is only returning true to suppress compilation errors
+	// The function is currently unimplemented, so DO NOT CALL IT
+	return true;
 }
 
 bool IsActorValid(AActor* actor)

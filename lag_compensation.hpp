@@ -2,14 +2,17 @@
 
 #include <cstddef>
 #include <array>
+#include <vcruntime_typeinfo.h>
 #include <vector>
 #include <tuple>
 #include <cassert>
+#include <typeinfo>
 #include <SdkHeaders.h>
 #include "Circular-Buffer/circular_buffer.hpp"
 #include "helper.hpp"
 #include "native_hooks.hpp"
 #include "Object-Pool/object_pool.hpp"
+#include "validate.hpp"
 
 template <typename T>
 concept HasReset = requires(T &t) {
@@ -18,12 +21,6 @@ concept HasReset = requires(T &t) {
 
 class LagCompensation
 {
-#if defined(PERFORM_ERROR_CHECKS)
-	static constexpr bool kPerformErrorChecks = true;
-#else
-	static constexpr bool kPerformErrorChecks = false;
-#endif
-
 	public:
 	// Singleton
 	LagCompensation(const LagCompensation &) = delete;
@@ -220,6 +217,9 @@ LagCompensation::ObjectPoolType<ActorType> LagCompensation::CreateObjectPool(voi
 template <typename ActorType>
 size_t LagCompensation::GetActorInformationIndex(ActorType* actor)
 {
+	if (PerformErrorCheck(!actor, "Actor ({}) is nullptr", reinterpret_cast<AActor*>(actor)->GetFullName()))
+		return kInvalidObjectPoolIndex;
+
 	auto index{*reinterpret_cast<size_t*>(&actor->EditorIconColor)};
 	return index;
 }
@@ -227,11 +227,15 @@ size_t LagCompensation::GetActorInformationIndex(ActorType* actor)
 template <typename ActorType>
 LagCompensation::ActorObjectPoolTraits<ActorType>::InformationType* LagCompensation::AllocateActorInformation(ActorType* actor)
 {
+	if (PerformErrorCheck(!actor, "Actor ({}) is nullptr", reinterpret_cast<AActor*>(actor)->GetFullName()))
+		return nullptr;
+
 	auto &object_pool{std::get<ObjectPoolType<ActorType>>(object_pools_)};
-	if constexpr (kPerformErrorChecks)
-	{
-		assert(GetActorInformationIndex(actor) == kInvalidObjectPoolIndex);
-	}
+	if (PerformErrorCheck(GetActorInformationIndex(actor) != kInvalidObjectPoolIndex,
+						  "Attempted to allocate actor information to an actor ({}) which already has actor information attached",
+						  reinterpret_cast<AActor*>(actor)->GetFullName()))
+		return nullptr;
+
 	auto index{kInvalidObjectPoolIndex};
 	do
 	{
@@ -249,6 +253,9 @@ LagCompensation::ActorObjectPoolTraits<ActorType>::InformationType* LagCompensat
 template <bool CheckActorBelongsToPool, typename ActorType>
 LagCompensation::ActorObjectPoolTraits<ActorType>::InformationType* LagCompensation::GetActorInformation(ActorType* actor)
 {
+	if (PerformErrorCheck(!actor, "Actor ({}) is nullptr", reinterpret_cast<AActor*>(actor)->GetFullName()))
+		return nullptr;
+
 	auto index{GetActorInformationIndex(actor)};
 	if (index == kInvalidObjectPoolIndex)
 	{
@@ -275,6 +282,16 @@ LagCompensation::ActorObjectPoolTraits<ActorType>::InformationType* LagCompensat
 template <typename ActorType>
 void LagCompensation::FreeActorInformation(ActorType* actor)
 {
+	if (PerformErrorCheck(!actor, "Actor ({}) is nullptr", reinterpret_cast<AActor*>(actor)->GetFullName()))
+		return;
+
+	if (PerformErrorCheck(!Is<ActorType>(actor), "Attempting to free actor information for type {} "
+												 "when actor is actually a {}",
+						  typeid(ActorType).name(), reinterpret_cast<AActor*>(actor)->GetFullName()))
+	{
+		return;
+	}
+
 	auto index{GetActorInformationIndex(actor)};
 	if (index == kInvalidObjectPoolIndex)
 	{

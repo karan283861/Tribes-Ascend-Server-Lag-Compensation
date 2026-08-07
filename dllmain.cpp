@@ -11,11 +11,11 @@
 #include <plog/Init.h>
 #include <plog/Log.h>
 
-#include "Detours/include/detours.h"
+#include <detours.h>
 
+#include <uhook.hpp>
 #include "processinternal_hooks.hpp"
 #include "native_hooks.hpp"
-#include "uhook.hpp"
 
 #include <SdkHeaders.h>
 
