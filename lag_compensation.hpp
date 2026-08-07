@@ -72,7 +72,7 @@ class LagCompensation
 	// Check if all projectiles in a ping bucket are from the same team
 	std::array<int, static_cast<int>(window_in_ms_)> team_per_ping_{};
 	static constexpr int kUninitialisedTeam{-1};
-	static constexpr int kInvalidTeam{-2};
+	static constexpr int kInvalidTeam{255};
 
 	private:
 	template <typename Element, size_t Capacity, bool PerformErrorChecks = kPerformErrorChecks>
@@ -246,13 +246,13 @@ LagCompensation::ActorObjectPoolTraits<ActorType>::InformationType* LagCompensat
 
 	auto &object_pool{std::get<ObjectPoolType<ActorType>>(object_pools_)};
 	auto actor_information{object_pool.At(index)};
-	if (!actor_information)
-	{
-		return nullptr;
-	}
 
 	if constexpr (CheckActorBelongsToPool)
 	{
+		if (!actor_information)
+		{
+			return nullptr;
+		}
 		return actor == actor_information->actor_ ? actor_information : nullptr;
 	}
 	else

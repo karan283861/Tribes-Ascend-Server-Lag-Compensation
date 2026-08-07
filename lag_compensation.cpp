@@ -146,12 +146,12 @@ bool LagCompensation::RewindPlayers(Ping ping_in_ms)
 	{
 		if (IsPlayerValid(player))
 		{
-			if (all_projectiles_are_from_same_ping_bucket && player->PlayerReplicationInfo->Team && team_per_ping_[ping_in_ms] == player->PlayerReplicationInfo->Team->TeamIndex)
+			auto player_information{GetActorInformation(player)};
+			if (all_projectiles_are_from_same_ping_bucket && player_information->team_ == team_per_ping_[ping_in_ms])
 			{
 				continue;
 			}
 
-			auto player_information{GetActorInformation(player)};
 			if (player_information && prev_index < player_information->tick_information_.Size())
 			{
 				const auto &tick_location{player_information->tick_information_[tick_index].location_};
