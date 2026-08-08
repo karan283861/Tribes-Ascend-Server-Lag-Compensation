@@ -181,8 +181,7 @@ class LagCompensation
 	template <typename ActorType>
 	ObjectPoolType<ActorType> CreateObjectPool(void);
 
-	template <typename ActorType>
-	size_t GetActorInformationIndex(ActorType* actor);
+	size_t GetActorInformationIndex(AActor* actor);
 
 	public:
 	template <typename ActorType>
@@ -215,24 +214,19 @@ LagCompensation::ObjectPoolType<ActorType> LagCompensation::CreateObjectPool(voi
 }
 
 template <typename ActorType>
-size_t LagCompensation::GetActorInformationIndex(ActorType* actor)
-{
-	if (PerformErrorCheck(!actor, "Actor ({}) is nullptr", reinterpret_cast<AActor*>(actor)->GetFullName()))
-		return kInvalidObjectPoolIndex;
-
-	auto index{*reinterpret_cast<size_t*>(&actor->EditorIconColor)};
-	return index;
-}
-
-template <typename ActorType>
 LagCompensation::ActorObjectPoolTraits<ActorType>::InformationType* LagCompensation::AllocateActorInformation(ActorType* actor)
 {
 	if (PerformErrorCheck(!actor, "Actor ({}) is nullptr", reinterpret_cast<AActor*>(actor)->GetFullName()))
 		return nullptr;
 
+	if (PerformErrorCheck(!Is<ActorType>(actor), "Attempting to allocate actor information for type {} "
+												 "when actor is actually a {}",
+						  typeid(ActorType).name(), reinterpret_cast<AActor*>(actor)->GetFullName()))
+		return nullptr;
+
 	auto &object_pool{std::get<ObjectPoolType<ActorType>>(object_pools_)};
 	if (PerformErrorCheck(GetActorInformationIndex(actor) != kInvalidObjectPoolIndex,
-						  "Attempted to allocate actor information to an actor ({}) which already has actor information attached",
+						  "Attempting to allocate actor information to an actor ({}) which already has actor information attached",
 						  reinterpret_cast<AActor*>(actor)->GetFullName()))
 		return nullptr;
 
@@ -241,6 +235,9 @@ LagCompensation::ActorObjectPoolTraits<ActorType>::InformationType* LagCompensat
 	{
 		index = object_pool.Allocate();
 	} while (index == kInvalidObjectPoolIndex);
+
+	if (PerformErrorCheck(index != kInvalidObjectPoolIndex, "Attempting to allocate actor information at an index of kInvalidObjectPoolIndex"))
+		return nullptr;
 
 	*reinterpret_cast<size_t*>(&actor->EditorIconColor) = index;
 
@@ -255,6 +252,15 @@ LagCompensation::ActorObjectPoolTraits<ActorType>::InformationType* LagCompensat
 {
 	if (PerformErrorCheck(!actor, "Actor ({}) is nullptr", reinterpret_cast<AActor*>(actor)->GetFullName()))
 		return nullptr;
+
+	// This check is not neccessary. Currently, it identify projectiles we cast every actor in Actor::Tick
+	// to a Projectile then check if it has an actor information attached, and if that actor information
+	// resides inside the ActorInformation<Projectile> actor pool
+	// As we're casting all actors at random to Projectile, the Is call below is expected to fail (a lot)
+	// if (PerformErrorCheck(!Is<ActorType>(actor), "Attempting to get actor information for type {} "
+	// 											 "when actor is actually a {}",
+	// 					  typeid(ActorType).name(), reinterpret_cast<AActor*>(actor)->GetFullName()))
+	// 	return;
 
 	auto index{GetActorInformationIndex(actor)};
 	if (index == kInvalidObjectPoolIndex)

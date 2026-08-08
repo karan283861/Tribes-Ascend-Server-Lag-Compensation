@@ -49,8 +49,9 @@ LagCompensation::ActorObjectPoolTraits<Projectile>::InformationType* LagCompensa
 	auto controller{reinterpret_cast<Controller*>(projectile->InstigatorController)};
 
 	// Make sure the actor passed was actually the right type, and not just casted as a Projectile
-	if (PerformErrorCheck(!projectile->IsA(Projectile::StaticClass()), "An actor passed to AddProjectile is not a Projectile"))
-		;
+	if (PerformErrorCheck(!projectile->IsA(Projectile::StaticClass()), "An actor passed to AddProjectile is not a Projectile, it is a {}",
+						  projectile->GetFullName()))
+		return nullptr;
 
 	// Check the controller and instigator of this projectile are of the right type
 	// The instigator may not be a Player (e.g. could be a vehicle or any other type of Pawn)
@@ -62,7 +63,7 @@ LagCompensation::ActorObjectPoolTraits<Projectile>::InformationType* LagCompensa
 	auto ping_in_ms{controller->PlayerReplicationInfo->ExactPing * 4};
 	Team team{controller->PlayerReplicationInfo->Team->TeamIndex};
 
-	if (PerformErrorCheck(ping_in_ms < 0, "A projectiles ping is less than zero"))
+	if (PerformErrorCheck(ping_in_ms < 0, "A projectiles ping is less than zero ({})", ping_in_ms))
 		return nullptr;
 
 	if (PerformErrorCheck(team == kUninitialisedTeam, "A projectiles controller has an uninitialised team"))
@@ -194,19 +195,25 @@ void LagCompensation::OnActorTick(Player* player)
 	player_tick_information.location_ = player->Location;
 	player_tick_information.velocity_ = player->Velocity;
 	player_information->tick_information_.PushBack(std::move(player_tick_information));
-	player_information->team_ = player->PlayerReplicationInfo->Team->TeamIndex;
+	player_information->team_ = team;
 
 	list_of_players_in_latest_tick_.push_back(player);
 }
 
 bool LagCompensation::RewindPlayers(Ping ping_in_ms)
 {
+	if (PerformErrorCheck(ping_in_ms < 0, "Passed ping is less than zero ({})", ping_in_ms))
+		return false;
+
 	if (PerformErrorCheck(team_per_ping_[ping_in_ms] == kUninitialisedTeam, "A ping of {} has an uninitialised team"))
 		;
 
 	bool all_projectiles_are_from_same_ping_bucket{team_per_ping_[ping_in_ms] != kInvalidTeam};
 	auto tick_index{static_cast<int>(ping_in_ms / tick_delta_in_ms_)};
 	auto prev_index{tick_index + 1};
+
+	if (PerformErrorCheck(tick_index < 0, "Calculated tick_index is less than zero ({})", tick_index))
+		return false;
 
 	for (auto &player : list_of_players_in_latest_tick_)
 	{
@@ -217,6 +224,10 @@ bool LagCompensation::RewindPlayers(Ping ping_in_ms)
 		// Check they're still valid. If they are, then they should have a player information
 		if (IsValid(player))
 		{
+			if (PerformErrorCheck(!Is<Player>(player), "An actor in list_of_players_in_latest_tick_ is NOT a Player, it is a {}",
+								  reinterpret_cast<AActor*>(player)->GetFullName()))
+				continue;
+
 			auto player_information{GetActorInformation(player)};
 			if (PerformErrorCheck(!player_information, "A player deemed valid has no player information attached"))
 				continue;
@@ -260,10 +271,16 @@ void LagCompensation::RestorePlayers(void)
 		// Check they're still valid. If they are, then they should have a player information
 		if (IsValid(player))
 		{
+			if (PerformErrorCheck(!Is<Player>(player), "An actor in list_of_players_in_latest_tick_ is NOT a Player, it is a {}",
+								  reinterpret_cast<AActor*>(player)->GetFullName()))
+				continue;
+
 			auto player_information{GetActorInformation(player)};
 			if (PerformErrorCheck(!player_information, "A player deemed valid has no player information attached"))
 				continue;
 
+			if (PerformErrorCheck(player_information->tick_information_.Size(), "A player deemed valid has an empty tick information in attached player information"))
+				continue;
 			original_world_farmoveactor(global_world, nullptr, player, player_information->tick_information_[0].location_, 0, 1, 0);
 		}
 	}
@@ -273,8 +290,14 @@ void LagCompensation::Tick(float DeltaSeconds, ELevelTick TickType)
 {
 	bool performed_rewind_of_players{false};
 
+	if (PerformErrorCheck(DeltaSeconds <= 0, "DeltaSeconds is less than or equalt to zero ({})", DeltaSeconds))
+		return;
+
 	for (auto ping_in_ms : pings_to_tick_in_latest_tick_)
 	{
+		if (PerformErrorCheck(ping_in_ms < 0, "Ping is ping_in_ms is less than zero ({})", ping_in_ms))
+			continue;
+
 		auto &list_of_projectiles{list_of_lag_compensated_projectiles_by_ping_in_latest_tick_[ping_in_ms]};
 
 		if (PerformErrorCheck(list_of_projectiles.empty(), "List of projectiles for ping {} is empty", ping_in_ms))
@@ -310,4 +333,13 @@ void LagCompensation::Tick(float DeltaSeconds, ELevelTick TickType)
 	pings_to_tick_in_latest_tick_.clear();
 	list_of_players_in_latest_tick_.clear();
 	std::fill(team_per_ping_.begin(), team_per_ping_.end(), kUninitialisedTeam);
+}
+
+size_t LagCompensation::GetActorInformationIndex(AActor* actor)
+{
+	if (PerformErrorCheck(!actor, "Actor ({}) is nullptr", reinterpret_cast<AActor*>(actor)->GetFullName()))
+		return kInvalidObjectPoolIndex;
+
+	auto index{*reinterpret_cast<size_t*>(&actor->EditorIconColor)};
+	return index;
 }

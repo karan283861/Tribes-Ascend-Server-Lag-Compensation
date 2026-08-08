@@ -19,6 +19,7 @@ bool Is<Projectile>(AActor* actor)
 {
 	// WARNING: This is only returning true to suppress compilation errors
 	// The function is currently unimplemented, so DO NOT CALL IT
+	PLOG_ERROR << "This function is unimplemented!";
 	return true;
 }
 
