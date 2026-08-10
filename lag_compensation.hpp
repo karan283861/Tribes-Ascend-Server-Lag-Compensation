@@ -142,7 +142,8 @@ class LagCompensation
 			auto controller{reinterpret_cast<Controller*>(player->Controller)};
 
 			// It could be possible that a player has Died but isn't Destroy'ed so it's still ticking
-			if (!IsValid(player) || !IsValid(controller) || !IsA<Controller>(controller))
+			// If we do  !IsA<Controller>(controller), then we will miss bot pawns spawned with ATrPlayerController_Training
+			if (!IsValid(player) || !IsA<Player>(player) || !IsValid(controller) /* || !IsA<Controller>(controller) */)
 			{
 				return false;
 			}
@@ -164,18 +165,18 @@ class LagCompensation
 
 		static bool ShouldAllocate(Projectile* projectile)
 		{
-			auto instigator{reinterpret_cast<Controller*>(projectile->Instigator)};
+			auto player{reinterpret_cast<Player*>(projectile->Instigator)};
 			auto controller{reinterpret_cast<Controller*>(projectile->InstigatorController)};
 
 			// Check the controller and instigator of this projectile are of the right type
 			// The instigator may not be a Player (e.g. could be a vehicle or any other type of Pawn)
-			if (!IsValid(controller) || !IsA<Controller>(controller) || !IsValid(instigator) || !IsA<Player>(instigator))
+			if (!IsA<Controller>(controller) || !IsValid(controller) || !IsA<Player>(player) || !IsValid(player))
 			{
 				return false;
 			}
 
-			auto ping_in_ms{controller->PlayerReplicationInfo->ExactPing * 4};
-			Team team{controller->PlayerReplicationInfo->Team->TeamIndex};
+			auto ping_in_ms{player->PlayerReplicationInfo->ExactPing * 4};
+			Team team{player->PlayerReplicationInfo->Team->TeamIndex};
 
 			if (PERFORM_ERROR_CHECK(ping_in_ms < 0, "Projectile ping is less than zero ({})", ping_in_ms))
 				return false;
@@ -273,6 +274,9 @@ template <typename ActorType>
 LagCompensation::ActorObjectPoolTraits<ActorType>::InformationType* LagCompensation::AllocateActorInformation(ActorType* actor)
 {
 	if (PERFORM_ERROR_CHECK(!actor, "Actor is nullptr"))
+		return nullptr;
+
+	if (PERFORM_ERROR_CHECK(!IsValid(actor), "Actor failed IsValid check"))
 		return nullptr;
 
 	// Make sure the actor passed was actually the right type, and not just casted as a ActorType

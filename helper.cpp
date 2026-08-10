@@ -34,7 +34,7 @@ bool IsA<Controller>(AActor* actor)
 	if (PERFORM_ERROR_CHECK(!actor, "Actor is nullptr"))
 		return false;
 
-	return actor->Class == Controller::StaticClass();
+	return actor && actor->Class == Controller::StaticClass();
 }
 
 template <>
@@ -43,7 +43,7 @@ bool IsA<Player>(AActor* actor)
 	if (PERFORM_ERROR_CHECK(!actor, "Actor is nullptr"))
 		return false;
 
-	return actor->Class == Player::StaticClass();
+	return actor && actor->Class == Player::StaticClass();
 }
 
 template <>
@@ -66,7 +66,7 @@ bool IsA<Projectile>(AActor* actor)
 	// to suppress compilation errors in LagCompensation::GetActorInformation,
 	// LagCompensation::AllocateActorInformation, LagCompensation::FreeActorInformation
 
-	return actor->IsA(Projectile::StaticClass());
+	return actor && actor->IsA(Projectile::StaticClass());
 }
 
 FVector Add_VectorVector(const FVector &A, const FVector &B)
