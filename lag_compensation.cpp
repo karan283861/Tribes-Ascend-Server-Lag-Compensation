@@ -232,6 +232,9 @@ bool LagCompensation::RewindPlayers(Ping ping_in_ms)
 	if (PERFORM_ERROR_CHECK(ping_in_ms < 0, "Ping argument is less than zero ({})", ping_in_ms))
 		return false;
 
+	if (PERFORM_ERROR_CHECK(ping_in_ms >= window_in_ms_, "Ping argument is equal to or greater than window ({})", ping_in_ms))
+		return false;
+
 	if (PERFORM_ERROR_CHECK(team_per_ping_[ping_in_ms] == kUninitialisedTeam, "A ping of {} has an uninitialised team"))
 		;
 
@@ -353,6 +356,12 @@ void LagCompensation::Tick(float delta_seconds, ELevelTick tick_type)
 	pings_to_tick_in_latest_tick_.clear();
 	list_of_players_in_latest_tick_.clear();
 	std::fill(team_per_ping_.begin(), team_per_ping_.end(), kUninitialisedTeam);
+
+	// Would it be faster to do below?
+	// for (auto& ping : pings_to_tick_in_latest_tick_)
+	// {
+	// 	team_per_ping_[ping] = kUninitialisedTeam;
+	// }
 }
 
 size_t LagCompensation::GetActorInformationIndex(AActor* actor)

@@ -68,26 +68,12 @@ void OnDLLProcessAttach()
 	// Hook native functions
 	// Perform lag compensation after all actors have ticked
 	DetourAttach(&(PVOID &)original_tickactors_preasyncwork, TickActorsPreAsyncWorkHook);
-	// Prevent ticking of lag compensated projectiles AND store player information per tick
-	// DetourAttach(&(PVOID &)original_actor_tick, ActorTickHook);
-	// DetourAttach(&(PVOID &)original_pawn_tick, PawnTickHook);
 
 	// Make sure all detours attaches are placed BEFORE this call
 	// Make sure UFunctionHooks objects are created AFTER this call
 	auto error{DetourTransactionCommit()};
 
 	PerformUFunctionHooks();
-
-	// TODO: Remove below
-	// auto set_location_ufunction{UObject::FindObject<UFunction>("Function Engine.Actor.SetLocation")};
-	// if (set_location_ufunction)
-	// {
-	// 	PLOG_INFO << std::format("SetLocation->Func offset = {:x}", reinterpret_cast<char*>(set_location_ufunction->Func) - reinterpret_cast<char*>(base_address));
-	// }
-	// else
-	// {
-	// 	PLOG_ERROR << "SetLocation UFunction not found";
-	// }
 }
 
 BOOL APIENTRY DllMain(HMODULE hModule,
