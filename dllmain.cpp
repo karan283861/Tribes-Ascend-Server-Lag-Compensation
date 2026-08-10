@@ -55,7 +55,7 @@ void OnDLLProcessAttach()
 	auto now{std::chrono::system_clock::now()};
 	auto log_with_date_string{std::format("ServerLagCompensation-{:%d-%m-%Y_%H-%M-%S}.txt", now)};
 	static plog::RollingFileAppender<plog::TxtFormatter> file_appender(log_with_date_string.c_str());
-	plog::init(plog::info, &file_appender);
+	plog::init(plog::verbose, &file_appender);
 
 	PLOG_INFO << std::format("Successfully Injected DLL");
 	PLOG_INFO << std::format("Base address: {0}", reinterpret_cast<void*>(base_address));
@@ -69,7 +69,8 @@ void OnDLLProcessAttach()
 	// Perform lag compensation after all actors have ticked
 	DetourAttach(&(PVOID &)original_tickactors_preasyncwork, TickActorsPreAsyncWorkHook);
 	// Prevent ticking of lag compensated projectiles AND store player information per tick
-	DetourAttach(&(PVOID &)original_actor_tick, ActorTickHook);
+	// DetourAttach(&(PVOID &)original_actor_tick, ActorTickHook);
+	// DetourAttach(&(PVOID &)original_pawn_tick, PawnTickHook);
 
 	// Make sure all detours attaches are placed BEFORE this call
 	// Make sure UFunctionHooks objects are created AFTER this call

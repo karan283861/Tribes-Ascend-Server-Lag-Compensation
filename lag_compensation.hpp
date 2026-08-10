@@ -115,6 +115,11 @@ class LagCompensation
 	struct ActorInformation<Controller> : public ActorInformationBase
 	{
 		Ping last_ping_in_ms_{};
+
+		static bool ShouldAllocate(Controller* controller)
+		{
+			return IsValid(controller);
+		}
 	};
 
 	template <>
@@ -132,6 +137,24 @@ class LagCompensation
 		{
 			tick_information_.Reset();
 		}
+
+		static bool ShouldAllocate(Player* player)
+		{
+			auto controller{reinterpret_cast<Controller*>(player->Controller)};
+
+			// It could be possible that a player has Died but isn't Destroy'ed so it's still ticking
+			if (!IsValid(player) || !IsValid(controller) || !IsA<Controller>(controller))
+			{
+				return false;
+			}
+
+			Team team{player->PlayerReplicationInfo->Team->TeamIndex};
+
+			if (PERFORM_ERROR_CHECK(team == kUninitialisedTeam || team == kInvalidTeam, "Player belongs to an invalid team"))
+				return false;
+
+			return true;
+		}
 	};
 
 	template <>
@@ -139,6 +162,36 @@ class LagCompensation
 	{
 		Ping ping_in_ms_{};
 		Team team_{kInvalidTeam};
+
+		static bool ShouldAllocate(Projectile* projectile)
+		{
+			auto instigator{reinterpret_cast<Controller*>(projectile->Instigator)};
+			auto controller{reinterpret_cast<Controller*>(projectile->InstigatorController)};
+
+			// Check the controller and instigator of this projectile are of the right type
+			// The instigator may not be a Player (e.g. could be a vehicle or any other type of Pawn)
+			if (!IsValid(controller) || !IsA<Controller>(controller) || !IsValid(instigator) || !IsA<Player>(instigator))
+			{
+				return false;
+			}
+
+			auto ping_in_ms{controller->PlayerReplicationInfo->ExactPing * 4};
+			Team team{controller->PlayerReplicationInfo->Team->TeamIndex};
+
+			if (PERFORM_ERROR_CHECK(ping_in_ms < 0, "Projectile ping is less than zero ({})", ping_in_ms))
+				return false;
+
+			if (PERFORM_ERROR_CHECK(team == kUninitialisedTeam || team == kInvalidTeam, "Projectile belongs to an invalid team"))
+				return false;
+
+			// Only lag compensate if ping is within our lag compensation windows AND the player has simulated projectiles ENABLED
+			if (ping_in_ms <= kMinimumPingThreshold || ping_in_ms >= window_in_ms_ || !controller->m_bAllowSimulatedProjectiles)
+			{
+				return false;
+			}
+
+			return true;
+		}
 	};
 
 	private:
@@ -194,7 +247,7 @@ class LagCompensation
 	void FreeActorInformation(ActorType* actor);
 
 	template <typename ActorType>
-	void OnActorTick(ActorType* actor);
+	bool OnActorTick(ActorType* actor);
 
 	// Currently there's no way optimial way to identify a Projectile in Actor::Tick hook unlike Player
 	// So we resort to checking the if the actor has an ActorInformation<Projectile> and such
@@ -202,7 +255,11 @@ class LagCompensation
 	ActorObjectPoolTraits<Projectile>::InformationType* AddProjectile(Projectile* projectile);
 	bool RewindPlayers(Ping ping_in_ms);
 	void RestorePlayers(void);
-	void Tick(float DeltaSeconds, ELevelTick TickType);
+	void Tick(float delta_seconds, ELevelTick tick_type);
+
+	private:
+	template <typename ActorType>
+	static void __fastcall ActorTick(ActorType* actor, void* unused, float delta_seconds, ELevelTick tick_type);
 };
 
 template <typename ActorType>
@@ -216,19 +273,29 @@ LagCompensation::ObjectPoolType<ActorType> LagCompensation::CreateObjectPool(voi
 template <typename ActorType>
 LagCompensation::ActorObjectPoolTraits<ActorType>::InformationType* LagCompensation::AllocateActorInformation(ActorType* actor)
 {
-	if (PerformErrorCheck(!actor, "Actor ({}) is nullptr", reinterpret_cast<AActor*>(actor)->GetFullName()))
+	if (PERFORM_ERROR_CHECK(!actor, "Actor is nullptr"))
 		return nullptr;
 
-	if (PerformErrorCheck(!Is<ActorType>(actor), "Attempting to allocate actor information for type {} "
-												 "when actor is actually a {}",
-						  typeid(ActorType).name(), reinterpret_cast<AActor*>(actor)->GetFullName()))
+	// Make sure the actor passed was actually the right type, and not just casted as a ActorType
+	if (PERFORM_ERROR_CHECK(!actor->IsA(ActorType::StaticClass()), "Actor is not a {}, it is a {}",
+							typeid(ActorType).name(), actor->GetFullName()))
+		return nullptr;
+
+	// We've ensured actor inherits from ActorType, but we need to check if it passes our own IsA check
+	if (PERFORM_ERROR_CHECK(!IsA<ActorType>(actor), "Actor failed the IsA<{}> check, it is a {}",
+							typeid(ActorType).name(), actor->GetFullName()))
 		return nullptr;
 
 	auto &object_pool{std::get<ObjectPoolType<ActorType>>(object_pools_)};
-	if (PerformErrorCheck(GetActorInformationIndex(actor) != kInvalidObjectPoolIndex,
-						  "Attempting to allocate actor information to an actor ({}) which already has actor information attached",
-						  reinterpret_cast<AActor*>(actor)->GetFullName()))
+	if (PERFORM_ERROR_CHECK(GetActorInformationIndex(actor) != kInvalidObjectPoolIndex,
+							"Attempting to allocate actor information to an actor ({}) which already has actor information attached",
+							actor->GetFullName()))
 		return nullptr;
+
+	if (!ActorObjectPoolTraits<ActorType>::InformationType::ShouldAllocate(actor))
+	{
+		return nullptr;
+	}
 
 	auto index{kInvalidObjectPoolIndex};
 	do
@@ -236,7 +303,7 @@ LagCompensation::ActorObjectPoolTraits<ActorType>::InformationType* LagCompensat
 		index = object_pool.Allocate();
 	} while (index == kInvalidObjectPoolIndex);
 
-	if (PerformErrorCheck(index != kInvalidObjectPoolIndex, "Attempting to allocate actor information at an index of kInvalidObjectPoolIndex"))
+	if (PERFORM_ERROR_CHECK(index == kInvalidObjectPoolIndex, "Attempting to allocate actor information at an index of kInvalidObjectPoolIndex"))
 		return nullptr;
 
 	*reinterpret_cast<size_t*>(&actor->EditorIconColor) = index;
@@ -250,17 +317,21 @@ LagCompensation::ActorObjectPoolTraits<ActorType>::InformationType* LagCompensat
 template <bool CheckActorBelongsToPool, typename ActorType>
 LagCompensation::ActorObjectPoolTraits<ActorType>::InformationType* LagCompensation::GetActorInformation(ActorType* actor)
 {
-	if (PerformErrorCheck(!actor, "Actor ({}) is nullptr", reinterpret_cast<AActor*>(actor)->GetFullName()))
+	if (PERFORM_ERROR_CHECK(!actor, "Actor is nullptr"))
 		return nullptr;
 
-	// This check is not neccessary. Currently, it identify projectiles we cast every actor in Actor::Tick
-	// to a Projectile then check if it has an actor information attached, and if that actor information
-	// resides inside the ActorInformation<Projectile> actor pool
-	// As we're casting all actors at random to Projectile, the Is call below is expected to fail (a lot)
-	// if (PerformErrorCheck(!Is<ActorType>(actor), "Attempting to get actor information for type {} "
-	// 											 "when actor is actually a {}",
-	// 					  typeid(ActorType).name(), reinterpret_cast<AActor*>(actor)->GetFullName()))
-	// 	return;
+	if constexpr (!CheckActorBelongsToPool)
+	{
+		// If we're not checking that the actor passed actually belongs to the pool of ActorType,
+		// that means actor must be of ActorType
+		if (PERFORM_ERROR_CHECK(!actor->IsA(ActorType::StaticClass()), "Actor is not a {}, it is a {}",
+								typeid(ActorType).name(), actor->GetFullName()))
+			return nullptr;
+
+		if (PERFORM_ERROR_CHECK(!IsA<ActorType>(actor), "Actor failed the IsA<{}> check, it is a {}",
+								typeid(ActorType).name(), actor->GetFullName()))
+			return nullptr;
+	}
 
 	auto index{GetActorInformationIndex(actor)};
 	if (index == kInvalidObjectPoolIndex)
@@ -288,15 +359,19 @@ LagCompensation::ActorObjectPoolTraits<ActorType>::InformationType* LagCompensat
 template <typename ActorType>
 void LagCompensation::FreeActorInformation(ActorType* actor)
 {
-	if (PerformErrorCheck(!actor, "Actor ({}) is nullptr", reinterpret_cast<AActor*>(actor)->GetFullName()))
+	if (PERFORM_ERROR_CHECK(!actor, "Actor is nullptr"))
 		return;
 
-	if (PerformErrorCheck(!Is<ActorType>(actor), "Attempting to free actor information for type {} "
-												 "when actor is actually a {}",
-						  typeid(ActorType).name(), reinterpret_cast<AActor*>(actor)->GetFullName()))
-	{
+	// Make sure the actor passed was actually the right type, and not just casted as a ActorType
+	if (PERFORM_ERROR_CHECK(!actor->IsA(ActorType::StaticClass()), "Actor is not a {}, it is a {}",
+							typeid(ActorType).name(), actor->GetFullName()))
 		return;
-	}
+
+	// We've ensured actor inherits from ActorType, but we need to check if it passes our own IsA check
+	if (PERFORM_ERROR_CHECK(!IsA<ActorType>(actor), "Attempting to free actor information for type {} "
+													"when actor is actually a {}",
+							typeid(ActorType).name(), actor->GetFullName()))
+		return;
 
 	auto index{GetActorInformationIndex(actor)};
 	if (index == kInvalidObjectPoolIndex)

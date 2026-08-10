@@ -9,13 +9,13 @@ using Projectile = ATrProjectile;
 using Ping = float;
 using Team = int;
 
-template <typename ActorType>
-bool Is(AActor* actor);
-
 bool IsActorValid(AActor* actor);
 
 template <typename ActorType>
 bool IsValid(ActorType* actor);
+
+template <typename ActorType>
+bool IsA(AActor* actor);
 
 // Avoid using Unreal VM.
 FVector Add_VectorVector(const FVector &A, const FVector &B);

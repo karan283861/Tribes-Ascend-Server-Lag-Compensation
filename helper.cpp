@@ -1,27 +1,6 @@
-#include <cstdlib>
 #include <plog/Log.h>
 #include "helper.hpp"
-
-template <>
-bool Is<Controller>(AActor* actor)
-{
-	return actor->Class == Controller::StaticClass();
-}
-
-template <>
-bool Is<Player>(AActor* actor)
-{
-	return actor->Class == Player::StaticClass();
-}
-
-template <>
-bool Is<Projectile>(AActor* actor)
-{
-	// WARNING: This is only returning true to suppress compilation errors
-	// The function is currently unimplemented, so DO NOT CALL IT
-	PLOG_ERROR << "This function is unimplemented!";
-	return true;
-}
+#include "validate.hpp"
 
 bool IsActorValid(AActor* actor)
 {
@@ -47,6 +26,47 @@ template <>
 bool IsValid(Projectile* projectile)
 {
 	return IsActorValid(projectile);
+}
+
+template <>
+bool IsA<Controller>(AActor* actor)
+{
+	if (PERFORM_ERROR_CHECK(!actor, "Actor is nullptr"))
+		return false;
+
+	return actor->Class == Controller::StaticClass();
+}
+
+template <>
+bool IsA<Player>(AActor* actor)
+{
+	if (PERFORM_ERROR_CHECK(!actor, "Actor is nullptr"))
+		return false;
+
+	return actor->Class == Player::StaticClass();
+}
+
+template <>
+bool IsA<Projectile>(AActor* actor)
+{
+	if (PERFORM_ERROR_CHECK(!actor, "Actor is nullptr"))
+		return false;
+
+	// The problem is that inheritence chains for Projectiles can vary quite a lot
+	// e.g.:  TrProj_BoltLauncher -> TrProjectile
+	// TrProj_AssaultRifle_MKD -> TrProj_AssaultRifle -> TrProjectile
+	// TrProj_EMPGrenade_MKD -> TrProj_EMPGrenade -> TrProj_Grenade -> TrProjectile
+	// And so on.
+	// We can insert the expensive logic here, but we should really avoid using it
+
+	// PLOG_WARNING << "This function should NOT be called!";
+
+	// WARNING: uobject->IsA is "expensive"... look for alternatives for release builds
+	// At the moment it can just return "true", we don't need this function except
+	// to suppress compilation errors in LagCompensation::GetActorInformation,
+	// LagCompensation::AllocateActorInformation, LagCompensation::FreeActorInformation
+
+	return actor->IsA(Projectile::StaticClass());
 }
 
 FVector Add_VectorVector(const FVector &A, const FVector &B)

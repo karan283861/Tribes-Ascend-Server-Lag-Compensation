@@ -1,10 +1,12 @@
 #pragma once
 
 #include <SdkHeaders.h>
+#include "helper.hpp"
 
 inline constexpr size_t kTickActorsPreAsyncWorkAddress{0x00801d10};
-inline constexpr size_t kActorTickAddress{0x00802b10};
 inline constexpr size_t kWorldFarMoveActorAddress{0x007e8a10};
+inline constexpr size_t kActorTickAddress{0x00802b10};
+inline constexpr size_t kPawnTickAddress{0x008aae90};
 
 class FDeferredTickList;
 enum class ELevelTick;
@@ -17,9 +19,14 @@ void TickActorsPreAsyncWorkHook(UWorld* world, float delta_seconds,
 
 using ActorTickPrototype = void(__fastcall*)(AActor* actor, void* unused, float delta_seconds, ELevelTick tick_type);
 extern ActorTickPrototype original_actor_tick;
-void __fastcall ActorTickHook(AActor* actor, void* unused, float delta_seconds, ELevelTick tick_type);
+// void __fastcall ActorTickHook(AActor* actor, void* unused, float delta_seconds, ELevelTick tick_type);
+
+using PawnTickPrototype = void(__fastcall*)(APawn* pawn, void* unused, float delta_seconds, ELevelTick tick_type);
+extern PawnTickPrototype original_pawn_tick;
+// void __fastcall PawnTickHook(APawn* pawn, void* unused, float delta_seconds, ELevelTick tick_type);
 
 using WorldFarMoveActor = unsigned int(__fastcall*)(UWorld* world, void* unused, AActor* Actor, const FVector &DestLocation, unsigned int test, unsigned int bNoCheck, unsigned int bAttachedMove);
 extern WorldFarMoveActor original_world_farmoveactor;
 
+extern bool ticking_TG_PreAsyncWork;
 extern UWorld* global_world;

@@ -23,8 +23,13 @@ UE3_PROCESSINTERNAL_HOOK(TrProjectileHurtRadiusInternal)
 	// An invalid instigator means the instigator has Died or Destroy'ed
 	if (rewind && IsValid(instigator))
 	{
+		// // The instigator should never change once the projectile is created (UNLESS it is set to nullptr)
+		// if (PERFORM_ERROR_CHECK(!IsA<Player>(instigator), "Projectile instigator is NOT a Player, it is a {}",
+		// 						instigator->GetFullName()))
+		// 	;
+
 		auto player_information{lag_compensation.GetActorInformation(instigator)};
-		if (PerformErrorCheck(!player_information, "A player deemed valid has no player information attached"))
+		if (PERFORM_ERROR_CHECK(!player_information, "A player deemed valid has no player information attached"))
 		{
 			original_processinternal(calling_uobject, unused, stack, result);
 			lag_compensation.RestorePlayers();
@@ -53,6 +58,9 @@ UE3_PROCESSINTERNAL_HOOK(TrProjectilePostBeginPlay)
 	auto projectile{reinterpret_cast<Projectile*>(calling_uobject)};
 	static auto &lag_compensation{LagCompensation::GetInstance()};
 
+	// No guarantee the projectile should be lag compensated
+	// Doesn't really matter, forward it to lag compensation which will perform validation and take
+	// care of it if needed
 	lag_compensation.AddProjectile(projectile);
 }
 
@@ -62,6 +70,10 @@ UE3_PROCESSINTERNAL_HOOK(UTProjectileDestroyed)
 
 	auto projectile{reinterpret_cast<Projectile*>(calling_uobject)};
 	static auto &lag_compensation{LagCompensation::GetInstance()};
+
+	// No guarantee the projectile is actually lag compensated (has an actor information attached)
+	// Doesn't really matter, forward it to lag compensation which will perform validation and take
+	// care of it if needed
 	lag_compensation.FreeActorInformation(projectile);
 }
 
@@ -72,8 +84,7 @@ UE3_PROCESSINTERNAL_HOOK(TrPawnDied)
 	auto player{reinterpret_cast<Player*>(calling_uobject)};
 	static auto &lag_compensation{LagCompensation::GetInstance()};
 
-	// No guarantee the pawn is a player (could be a vehicle?)
-	// Doesn't really matter, forward it lag compensation which will
-	// take care of it if needed
+	// No guarantee the pawn is a player (could be a vehicle?). Doesn't really matter, forward it
+	// to lag compensation which will perform validation and take care of it if needed
 	lag_compensation.FreeActorInformation(player);
 }

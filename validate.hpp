@@ -6,8 +6,10 @@
 
 #if defined(PERFORM_ERROR_CHECKS)
 inline constexpr bool kPerformErrorChecks = true;
+#define PERFORM_ERROR_CHECK(error_condition, diagnostic_string, ...) PerformErrorCheck(error_condition, diagnostic_string, __VA_ARGS__)
 #else
 inline constexpr bool kPerformErrorChecks = false;
+#define PERFORM_ERROR_CHECK(error_condition, diagnostic_string, ...) false
 #endif
 
 struct DiagnosticMessage
@@ -32,15 +34,12 @@ struct DiagnosticMessage
 template <typename... Args>
 constexpr bool PerformErrorCheck(bool error_condition, const DiagnosticMessage &diagnostic_message, Args &&... args)
 {
-	if constexpr (kPerformErrorChecks)
+	if (error_condition)
 	{
-		if (error_condition)
-		{
-			auto full_format_string{"Error:\t" + static_cast<std::string>(diagnostic_message) + "\t@\t{}:{}"};
-			PLOG_ERROR << std::vformat(full_format_string, std::make_format_args(args..., diagnostic_message.function_name_, diagnostic_message.line_));
-		};
-		assert(!error_condition);
-		return error_condition;
-	}
+		auto full_format_string{"Error:\t" + static_cast<std::string>(diagnostic_message) + "\t@\t{}:{}"};
+		PLOG_ERROR << std::vformat(full_format_string, std::make_format_args(args..., diagnostic_message.function_name_, diagnostic_message.line_));
+	};
+	assert(!error_condition);
+	return error_condition;
 	return false;
 }
