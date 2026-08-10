@@ -270,7 +270,7 @@ bool LagCompensation::RewindPlayers(Ping ping_in_ms)
 				continue;
 			}
 
-			if (prev_index < player_information->tick_information_.Size() == 0)
+			if (prev_index < player_information->tick_information_.Size())
 			{
 				const auto &tick_location{player_information->tick_information_[tick_index].location_};
 				const auto &prev_location{player_information->tick_information_[prev_index].location_};
