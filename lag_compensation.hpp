@@ -143,7 +143,7 @@ class LagCompensation
 
 			// It could be possible that a player has Died but isn't Destroy'ed so it's still ticking
 			// If we do  !IsA<Controller>(controller), then we will miss bot pawns spawned with ATrPlayerController_Training
-			if (!IsValid(player) || !IsA<Player>(player) || !IsValid(controller) /* || !IsA<Controller>(controller) */)
+			if (!IsA<Player>(player) || !IsValid(player) /* || !IsA<Controller>(controller) */ || !IsValid(controller))
 			{
 				return false;
 			}
