@@ -41,8 +41,7 @@ class LagCompensation
 	static constexpr Ping window_in_ms_{400.0f};
 	// Don't perform lag compensation for any ping less than this
 	static constexpr Ping kMinimumPingThreshold{4.0f};
-	// The + 2 is neccessary to ensure we can compensate for between (kMinimumPingThreshold, window_in_ms_]
-	static constexpr size_t buffer_size_{static_cast<size_t>((window_in_ms_ / tick_delta_in_ms_) + 2)};
+	// The + 2 is neccessary to ensure we can compensate for between (kMinimumPingThreshold, window_in_ms_)
 	static constexpr size_t window_buffer_size_{static_cast<size_t>((window_in_ms_ / tick_delta_in_ms_) + 2)};
 
 	// If the change in ping of a player is not greater than kMaxPingDelta during a tick,

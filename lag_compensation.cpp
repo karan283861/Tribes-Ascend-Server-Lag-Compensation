@@ -175,7 +175,7 @@ bool LagCompensation::OnActorTick(Projectile* projectile)
 
 	auto &projectile_list{list_of_lag_compensated_projectiles_by_ping_in_latest_tick_[projectile_information->ping_in_ms_]};
 
-	if (projectile_list.size() == 0)
+	if (projectile_list.empty())
 	{
 		pings_to_tick_in_latest_tick_.push_back(projectile_information->ping_in_ms_);
 	}
@@ -255,7 +255,7 @@ bool LagCompensation::RewindPlayers(Ping ping_in_ms)
 			if (PERFORM_ERROR_CHECK(!player_information, "Player deemed valid has no player information attached"))
 				continue;
 
-			if (PERFORM_ERROR_CHECK(player_information->tick_information_.Size(), "Player deemed valid has an empty tick information in attached player information"))
+			if (PERFORM_ERROR_CHECK(player_information->tick_information_.Size() == 0, "Player deemed valid has an empty tick information in attached player information"))
 				continue;
 
 			if (PERFORM_ERROR_CHECK(player_information->team_ == kUninitialisedTeam || player_information->team_ == kInvalidTeam,
@@ -267,7 +267,7 @@ bool LagCompensation::RewindPlayers(Ping ping_in_ms)
 				continue;
 			}
 
-			if (prev_index < player_information->tick_information_.Size())
+			if (prev_index < player_information->tick_information_.Size() == 0)
 			{
 				const auto &tick_location{player_information->tick_information_[tick_index].location_};
 				const auto &prev_location{player_information->tick_information_[prev_index].location_};
@@ -299,7 +299,7 @@ void LagCompensation::RestorePlayers(void)
 			if (PERFORM_ERROR_CHECK(!player_information, "Player deemed valid has no player information attached"))
 				continue;
 
-			if (PERFORM_ERROR_CHECK(player_information->tick_information_.Size(), "Player deemed valid has an empty tick information in attached player information"))
+			if (PERFORM_ERROR_CHECK(player_information->tick_information_.Size() == 0, "Player deemed valid has an empty tick information in attached player information"))
 				continue;
 			original_world_farmoveactor(global_world, nullptr, player, player_information->tick_information_[0].location_, 0, 1, 0);
 		}
