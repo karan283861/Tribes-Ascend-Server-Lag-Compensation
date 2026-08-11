@@ -7,9 +7,9 @@
 #include "native_hooks.hpp"
 
 template <>
-void __fastcall LagCompensation::ActorTick<Player>(Player* player, void* unused, float delta_seconds, ELevelTick tick_type);
+void __fastcall LagCompensation::ActorTick(Player* player, void* unused, float delta_seconds, ELevelTick tick_type);
 template <>
-void __fastcall LagCompensation::ActorTick<Projectile>(Projectile* projectile, void* unused, float delta_seconds, ELevelTick tick_type);
+void __fastcall LagCompensation::ActorTick(Projectile* projectile, void* unused, float delta_seconds, ELevelTick tick_type);
 
 LagCompensation &LagCompensation::GetInstance(void)
 {
@@ -19,13 +19,9 @@ LagCompensation &LagCompensation::GetInstance(void)
 
 LagCompensation::LagCompensation()
 {
-	// TODO: Remove commented lines below
-
 	pings_to_tick_in_latest_tick_.reserve(window_in_ms_);
 	list_of_players_in_latest_tick_.reserve(kEstimatedMaxPlayers);
 
-	// list_of_lag_compensated_projectiles_by_ping_in_latest_tick_.reserve(window_in_ms_);
-	// list_of_lag_compensated_projectiles_by_ping_in_latest_tick_.resize(window_in_ms_);
 	for (auto i{std::size_t{0}}; i < list_of_lag_compensated_projectiles_by_ping_in_latest_tick_.size(); i++)
 	{
 		if (i <= kMinimumPingThreshold || i >= window_buffer_size_)
@@ -33,20 +29,17 @@ LagCompensation::LagCompensation()
 			continue;
 		}
 
-		// Pings *SHOULD* always be a multiple of 4, so we can ignore anything not divisible 4.
-		// WARNING: This hasn't been confirmed.
+		// Pings *SHOULD* always be a multiple of 4, so we can ignore anything not divisible 4
+		// WARNING: This hasn't been confirmed
 		if (i % 4 == 0)
 		{
 			list_of_lag_compensated_projectiles_by_ping_in_latest_tick_[i].reserve(kEstimatedMaxProjectilesPerPing);
 		}
 	}
 
-	// team_per_ping_.reserve(window_in_ms_);
-	// team_per_ping_.resize(window_in_ms_);
 	std::fill(team_per_ping_.begin(), team_per_ping_.end(), kUninitialisedTeam);
 
 	// Members initialised, let's now hook the VMTs and overwrite AActor::Tick
-
 	auto get_vmt_function_index{[](void* object, size_t index) -> void*
 								{
 									if (object)
@@ -121,6 +114,7 @@ LagCompensation::ActorObjectPoolTraits<Projectile>::InformationType* LagCompensa
 	auto projectile_information{AllocateActorInformation(projectile)};
 	if (!projectile_information)
 	{
+		// This is fine. AllocateActorInformation can fail if ActorInformation<Projectile>::ShouldAllocate returns false
 		return nullptr;
 	}
 
@@ -197,6 +191,8 @@ bool LagCompensation::OnActorTick(Projectile* projectile)
 template <>
 bool LagCompensation::OnActorTick(Player* player)
 {
+	// WARNING: This will crash if player is nullptr... we assume at the very least anything passed
+	// to OnActorTick is non null
 	auto controller{reinterpret_cast<Controller*>(player->Controller)};
 
 	// It could be possible that a player has Died but isn't Destroy'ed so it's still ticking
@@ -326,13 +322,9 @@ void LagCompensation::Tick(float delta_seconds, ELevelTick tick_type)
 		if (PERFORM_ERROR_CHECK(list_of_projectiles.empty(), "List of projectiles for ping {} is empty", ping_in_ms))
 			continue;
 
-		if (!RewindPlayers(ping_in_ms))
-		{
-			continue;
-		}
+		performed_rewind_of_players |= RewindPlayers(ping_in_ms);
 
-		performed_rewind_of_players = true;
-
+		// Even if RewindPlayers encounters an error, we still should tick the projectiles
 		for (auto &projectile : list_of_projectiles)
 		{
 			if (PERFORM_ERROR_CHECK(!IsValid(projectile), "Projectile attempting to tick was deemed invalid"))
@@ -374,7 +366,7 @@ size_t LagCompensation::GetActorInformationIndex(AActor* actor)
 }
 
 template <>
-void __fastcall LagCompensation::ActorTick<Player>(Player* player, void* unused, float delta_seconds, ELevelTick tick_type)
+void __fastcall LagCompensation::ActorTick(Player* player, void* unused, float delta_seconds, ELevelTick tick_type)
 {
 	if (!ticking_TG_PreAsyncWork)
 	{
@@ -392,7 +384,7 @@ void __fastcall LagCompensation::ActorTick<Player>(Player* player, void* unused,
 }
 
 template <>
-void __fastcall LagCompensation::ActorTick<Projectile>(Projectile* projectile, void* unused, float delta_seconds, ELevelTick tick_type)
+void __fastcall LagCompensation::ActorTick(Projectile* projectile, void* unused, float delta_seconds, ELevelTick tick_type)
 {
 	if (!ticking_TG_PreAsyncWork)
 	{
@@ -402,6 +394,7 @@ void __fastcall LagCompensation::ActorTick<Projectile>(Projectile* projectile, v
 	static auto &lag_compensation{LagCompensation::GetInstance()};
 	if (!lag_compensation.OnActorTick(projectile))
 	{
+		// Return value tells us if we should absorb the call the below
 		return original_actor_tick(projectile, nullptr, delta_seconds, tick_type);
 	}
 }

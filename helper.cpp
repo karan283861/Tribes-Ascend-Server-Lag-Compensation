@@ -46,6 +46,7 @@ bool IsA<Player>(AActor* actor)
 	return actor && actor->Class == Player::StaticClass();
 }
 
+#if defined(PERFORM_ERROR_CHECKS)
 template <>
 bool IsA<Projectile>(AActor* actor)
 {
@@ -68,6 +69,7 @@ bool IsA<Projectile>(AActor* actor)
 
 	return actor && actor->IsA(Projectile::StaticClass());
 }
+#endif
 
 FVector Add_VectorVector(const FVector &A, const FVector &B)
 {

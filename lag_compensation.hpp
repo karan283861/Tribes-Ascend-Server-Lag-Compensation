@@ -6,7 +6,6 @@
 #include <vector>
 #include <tuple>
 #include <cassert>
-#include <typeinfo>
 #include <SdkHeaders.h>
 #include "Circular-Buffer/circular_buffer.hpp"
 #include "helper.hpp"
@@ -143,6 +142,7 @@ class LagCompensation
 
 			// It could be possible that a player has Died but isn't Destroy'ed so it's still ticking
 			// If we do  !IsA<Controller>(controller), then we will miss bot pawns spawned with ATrPlayerController_Training
+			// It's *probably* not worth checking if the controller IsA<Controller>, just that the controller is valid
 			if (!IsA<Player>(player) || !IsValid(player) /* || !IsA<Controller>(controller) */ || !IsValid(controller))
 			{
 				return false;
@@ -247,6 +247,7 @@ class LagCompensation
 	void FreeActorInformation(ActorType* actor);
 
 	template <typename ActorType>
+	// Assumptions: actor is at least not nullptr
 	bool OnActorTick(ActorType* actor);
 
 	// Currently there's no way optimial way to identify a Projectile in Actor::Tick hook unlike Player
@@ -259,6 +260,7 @@ class LagCompensation
 
 	private:
 	template <typename ActorType>
+	// Assumptions: actor is at least not nullptr
 	static void __fastcall ActorTick(ActorType* actor, void* unused, float delta_seconds, ELevelTick tick_type);
 };
 
