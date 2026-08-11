@@ -18,19 +18,32 @@ concept HasReset = requires(T &t) {
 	t.Reset();
 };
 
+/**	@class LagCompensation
+	@brief Singleton class which encapsulates lag compensation functionality.
+ */
 class LagCompensation
 {
-	public:
-	// Singleton
+	protected:
+	/** @name Constructors
+		@brief Protected to ensure singleton functionality
+	 */
+	LagCompensation();
+
+	/**	@name Copy and move operations
+		@{
+		@brief Deleted to ensure singleton functionality
+	 */
 	LagCompensation(const LagCompensation &) = delete;
 	LagCompensation &operator=(const LagCompensation &) = delete;
 	LagCompensation(LagCompensation &&) = delete;
 	LagCompensation &operator=(LagCompensation &&) = delete;
+	/** @} */
 
+	public:
+	/** @brief Get instance of the LagCompensation singleton class
+		@return Reference to a static LagCompensation object
+	 */
 	static LagCompensation &GetInstance(void);
-
-	protected:
-	LagCompensation();
 
 	private:
 	// Tick rate - initialise to the default value of 30
