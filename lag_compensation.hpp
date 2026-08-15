@@ -151,12 +151,8 @@ class LagCompensation
 
 		static bool ShouldAllocate(Player* player)
 		{
-			auto controller{reinterpret_cast<Controller*>(player->Controller)};
-
 			// It could be possible that a player has Died but isn't Destroy'ed so it's still ticking
-			// If we do  !IsA<Controller>(controller), then we will miss bot pawns spawned with ATrPlayerController_Training
-			// It's *probably* not worth checking if the controller IsA<Controller>, just that the controller is valid
-			if (!IsA<Player>(player) || !IsValid(player) /* || !IsA<Controller>(controller) */ || !IsValid(controller))
+			if (!IsValid(player))
 			{
 				return false;
 			}
@@ -178,12 +174,31 @@ class LagCompensation
 
 		static bool ShouldAllocate(Projectile* projectile)
 		{
-			auto player{reinterpret_cast<Player*>(projectile->Instigator)};
-			auto controller{reinterpret_cast<Controller*>(projectile->InstigatorController)};
+			// Should check projectile is valid, because we're going to dereference it
 
-			// Check the controller and instigator of this projectile are of the right type
-			// The instigator may not be a Player (e.g. could be a vehicle or any other type of Pawn)
-			if (!IsA<Controller>(controller) || !IsValid(controller) || !IsA<Player>(player) || !IsValid(player))
+			auto instigator_controller{projectile->InstigatorController};
+			auto instigator{projectile->Instigator};
+
+			if (!IsA<Controller>(instigator_controller))
+			{
+				return false;
+			}
+
+			// We can only check if the instigator_controller IsValid<Controller> if we've confirmed the instigator_controller is a Controller
+			auto controller{reinterpret_cast<Controller*>(instigator_controller)};
+			if (!IsValid(controller))
+			{
+				return false;
+			}
+
+			if (!IsA<Player>(instigator))
+			{
+				return false;
+			}
+
+			// We can only check if the instigator IsValid<Player> if we've confirmed the instigator is a Player
+			auto player{reinterpret_cast<Player*>(instigator)};
+			if (!IsValid(player))
 			{
 				return false;
 			}
@@ -272,9 +287,14 @@ class LagCompensation
 	void Tick(float delta_seconds, ELevelTick tick_type);
 
 	private:
+	
 	template <typename ActorType>
-	// Assumptions: actor is at least not nullptr
 	static void __fastcall ActorTick(ActorType* actor, void* unused, float delta_seconds, ELevelTick tick_type);
+
+	template <>
+	static void __fastcall ActorTick<Player>(Player* player, void* unused, float delta_seconds, ELevelTick tick_type);
+	template <>
+	static void __fastcall ActorTick<Projectile>(Projectile* player, void* unused, float delta_seconds, ELevelTick tick_type);
 };
 
 template <typename ActorType>

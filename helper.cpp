@@ -4,72 +4,116 @@
 
 bool IsActorValid(AActor* actor)
 {
-	// Basically checking the actor is not marked for destruction by the engine
 	return actor && !actor->bPendingDelete && !actor->bDeleteMe;
 }
 
 template <>
-bool IsValid(Controller* controller)
+bool IsValid<Controller>(Controller* controller)
 {
+	// If PERFORM_ERROR_CHECKS is enabled and the parameter is nullptr,
+	// we will crash attempting to call ->GetFullName()
+	if (PERFORM_ERROR_CHECK(!controller, "Controller is nullptr"))
+		return false;
+
+	// Make sure the controller was actually the right type, and not just casted as a Controller
+	if (PERFORM_ERROR_CHECK(!controller->IsA(Controller::StaticClass()), "Controller is not a {}, it is a {}",
+							typeid(Controller).name(), controller->GetFullName()))
+		return false;
+
+	// We've ensured controller inherits from Controller, but we need to check if it passes our own IsA check
+	if (PERFORM_ERROR_CHECK(!IsA<Controller>(controller), "Controller failed the IsA<{}> check, it is a {}",
+							typeid(Controller).name(), controller->GetFullName()))
+		return false;
+
 	return IsActorValid(controller);
 }
 
 template <>
-bool IsValid(Player* player)
+bool IsValid<Player>(Player* player)
 {
+	// If PERFORM_ERROR_CHECKS is enabled and the parameter is nullptr,
+	// we will crash attempting to call ->GetFullName()
+	if (PERFORM_ERROR_CHECK(!player, "Player is nullptr"))
+		return false;
+
+	// Make sure the player was actually the right type, and not just casted as a Player
+	if (PERFORM_ERROR_CHECK(!player->IsA(Player::StaticClass()), "Player is not a {}, it is a {}",
+							typeid(Player).name(), player->GetFullName()))
+		return false;
+
+	// We've ensured player inherits from Player, but we need to check if it passes our own IsA check
+	if (PERFORM_ERROR_CHECK(!IsA<Player>(player), "Player failed the IsA<{}> check, it is a {}",
+							typeid(Player).name(), player->GetFullName()))
+		return false;
+
 	// Not having a PlayerReplicationInfo means the Player pawn is unpossessed (no controller)
 	// A player pawn can be dead but still not marked for destruction, so we ensure health is valid
 	return IsActorValid(player) && player->PlayerReplicationInfo && player->PlayerReplicationInfo->Team && player->Health > 0;
 }
 
 template <>
-bool IsValid(Projectile* projectile)
+bool IsValid<Projectile>(Projectile* projectile)
 {
+	// If PERFORM_ERROR_CHECKS is enabled and the parameter is nullptr,
+	// we will crash attempting to call ->GetFullName()
+	if (PERFORM_ERROR_CHECK(!projectile, "Projectile is nullptr"))
+		return false;
+
+	// Make sure the projectile was actually the right type, and not just casted as a Projectile
+	if (PERFORM_ERROR_CHECK(!projectile->IsA(Projectile::StaticClass()), "Projectile is not a {}, it is a {}",
+							typeid(Projectile).name(), projectile->GetFullName()))
+		return false;
+
+	// We've ensured projectile inherits from Projectile, but we need to check if it passes our own IsA check
+	if (PERFORM_ERROR_CHECK(!IsA<Projectile>(projectile), "Projectile failed the IsA<{}> check, it is a {}",
+							typeid(Projectile).name(), projectile->GetFullName()))
+		return false;
+
 	return IsActorValid(projectile);
 }
 
 template <>
-bool IsA<Controller>(AActor* actor)
+bool IsA<Controller>(UObject* object)
 {
-	if (PERFORM_ERROR_CHECK(!actor, "Actor is nullptr"))
+	if (!object)
+	{
 		return false;
+	}
 
-	return actor && actor->Class == Controller::StaticClass();
+	const auto* controller_class{Controller::StaticClass()};
+	const auto* super_class{object->Class->SuperField};
+	// Most controllers will be of type Controller, very unlikey they will be a derived type
+	auto result{(object->Class == controller_class) ||
+		 (super_class && super_class == controller_class)};
+	return result;
 }
 
 template <>
-bool IsA<Player>(AActor* actor)
+bool IsA<Player>(UObject* object)
 {
-	if (PERFORM_ERROR_CHECK(!actor, "Actor is nullptr"))
+	if (!object)
+	{
 		return false;
+	}
 
-	return actor && actor->Class == Player::StaticClass();
+	const auto* player_class{Player::StaticClass()};
+	const auto* super_class{object->Class->SuperField};
+	// Most players will be of type PLayer, very unlikey they will be a derived type
+	auto result{(object->Class == player_class) ||
+		 (super_class && super_class == player_class)};
+	return result;
 }
 
-#if defined(PERFORM_ERROR_CHECKS)
 template <>
-bool IsA<Projectile>(AActor* actor)
+bool IsA<Projectile>(UObject* object)
 {
-	if (PERFORM_ERROR_CHECK(!actor, "Actor is nullptr"))
+	if (!object)
+	{
 		return false;
+	}
 
-	// The problem is that inheritence chains for Projectiles can vary quite a lot
-	// e.g.:  TrProj_BoltLauncher -> TrProjectile
-	// TrProj_AssaultRifle_MKD -> TrProj_AssaultRifle -> TrProjectile
-	// TrProj_EMPGrenade_MKD -> TrProj_EMPGrenade -> TrProj_Grenade -> TrProjectile
-	// And so on.
-	// We can insert the expensive logic here, but we should really avoid using it
-
-	// PLOG_WARNING << "This function should NOT be called!";
-
-	// WARNING: uobject->IsA is "expensive"... look for alternatives for release builds
-	// At the moment it can just return "true", we don't need this function except
-	// to suppress compilation errors in LagCompensation::GetActorInformation,
-	// LagCompensation::AllocateActorInformation, LagCompensation::FreeActorInformation
-
-	return actor && actor->IsA(Projectile::StaticClass());
+	return object->IsA(Projectile::StaticClass());
 }
-#endif
 
 FVector Add_VectorVector(const FVector &A, const FVector &B)
 {
