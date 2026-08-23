@@ -1,14 +1,25 @@
+#pragma once
+
 #include <format>
 #include <string>
 #include <cassert>
 #include <source_location>
+#include <stacktrace>
 #include <plog/Log.h>
 
+#if defined(_DEBUG)
+#define PERFORM_ERROR_CHECKS
+#endif
+
+template <typename T>
+inline constexpr bool always_false_v{false};
+
 #if defined(PERFORM_ERROR_CHECKS)
-inline constexpr bool kPerformErrorChecks = true;
-#define PERFORM_ERROR_CHECK(error_condition, diagnostic_string, ...) PerformErrorCheck(error_condition, diagnostic_string, __VA_ARGS__)
+inline constexpr bool kPerformErrorChecks{true};
+#define PERFORM_ERROR_CHECK(error_condition, diagnostic_string, ...) PerformErrorCheck((error_condition), std::string(diagnostic_string), std::string(__FUNCSIG__), __VA_ARGS__)
 #else
-inline constexpr bool kPerformErrorChecks = false;
+inline constexpr bool kPerformErrorChecks{false};
+// This is to prevent evaluation of error_condition when PERFORM_ERROR_CHECKS is undefined (kPerformErrorChecks == false)
 #define PERFORM_ERROR_CHECK(error_condition, diagnostic_string, ...) false
 #endif
 
@@ -19,8 +30,8 @@ struct DiagnosticMessage
 	std::string function_name_{};
 	size_t line_{};
 
-	template <typename StringType>
-	DiagnosticMessage(const StringType &format_string, std::source_location source_location = std::source_location::current())
+	// template <typename StringType>
+	DiagnosticMessage(const std::string& format_string, std::source_location source_location = std::source_location::current())
 		: format_string_(format_string), source_location_(source_location), function_name_(source_location_.function_name()), line_(source_location_.line())
 	{
 	}
@@ -32,14 +43,21 @@ struct DiagnosticMessage
 };
 
 template <typename... Args>
-constexpr bool PerformErrorCheck(bool error_condition, const DiagnosticMessage &diagnostic_message, Args &&... args)
+constexpr bool PerformErrorCheck(bool error_condition, const DiagnosticMessage& diagnostic_message, const std::string& function_signature, Args&&... args)
 {
-	if (error_condition)
+	if constexpr (kPerformErrorChecks)
 	{
-		auto full_format_string{"Error:\t" + static_cast<std::string>(diagnostic_message) + "\t@\t{}:{}"};
-		PLOG_ERROR << std::vformat(full_format_string, std::make_format_args(args..., diagnostic_message.function_name_, diagnostic_message.line_));
-	};
-	assert(!error_condition);
-	return error_condition;
+		if (error_condition)
+		{
+			auto full_format_string{"Error:\t" + static_cast<std::string>(diagnostic_message) + "\t@\t{}:{}\n"};
+			PLOG_ERROR << std::string(10, '=') + "\n"
+					   << std::vformat(full_format_string, std::make_format_args(args..., function_signature, diagnostic_message.line_)) << "\n"
+					   << std::string(10, '-') << "\n"
+					   << std::stacktrace::current() << "\n"
+					   << std::string(10, '=') << "\n";
+		};
+		assert(!error_condition);
+		return error_condition;
+	}
 	return false;
 }

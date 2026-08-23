@@ -6,7 +6,54 @@
 #include "helper.hpp"
 #include "native_hooks.hpp"
 
-LagCompensation &LagCompensation::GetInstance(void)
+// #define ACTORTYPE_POSTVALIDATION(POINTER_TO_ACTOR, STATEMENT_ON_ERROR)
+
+// #define IS_ACTOR_AND_ACTOR_INFORMATION_VALID(POINTER_TO_ACTOR, STATEMENT_ON_ERROR)                              \
+// 	IS_ACTOR_VALID(POINTER_TO_ACTOR, STATEMENT_ON_ERROR)                                                        \
+// 	if (PERFORM_ERROR_CHECK(!GetActorInformation(POINTER_TO_ACTOR),                                             \
+// 							"{} is a {} and is deemed valid but has no actor information attached",             \
+// 							#POINTER_TO_ACTOR,                                                                  \
+// 							typeid(decltype(*POINTER_TO_ACTOR)).name()))                                        \
+// 		STATEMENT_ON_ERROR;                                                                                     \
+//                                                                                                                 \
+// 	if (PERFORM_ERROR_CHECK(!GetActorInformation(POINTER_TO_ACTOR)->actor_,                                     \
+// 							"{} is a {} but the attached actor information points to a nullptr",                \
+// 							#POINTER_TO_ACTOR,                                                                  \
+// 							typeid(decltype(*POINTER_TO_ACTOR)).name()))                                        \
+// 		STATEMENT_ON_ERROR;                                                                                     \
+//                                                                                                                 \
+// 	if (PERFORM_ERROR_CHECK(POINTER_TO_ACTOR != GetActorInformation(POINTER_TO_ACTOR)->actor_,                  \
+// 							"{} is a {} but the attached actor information points to a different actor (a {})", \
+// 							#POINTER_TO_ACTOR,                                                                  \
+// 							typeid(decltype(*POINTER_TO_ACTOR)).name(),                                         \
+// 							GetActorInformation(POINTER_TO_ACTOR)->actor_->GetFullName()))                      \
+// 		STATEMENT_ON_ERROR;                                                                                     \
+//                                                                                                                 \
+// 	if (PERFORM_ERROR_CHECK(!GetActorInformation(POINTER_TO_ACTOR)->IsValid(),                                  \
+// 							"The attached actor information is deemed invalid"))                                \
+// 		STATEMENT_ON_ERROR;
+
+// #if defined(PERFORM_ERROR_CHECKS)
+// template <IsAnActor ActorType>
+// bool IsActorInformationValid(ActorType* actor)
+// {
+// 	auto type_name{std::string{typeid(ActorType).name()}};
+
+// 	if (PERFORM_ERROR_CHECK(!actor, "Actor is a {} and is nullptr", type_name))
+// 		return false;
+
+// 	auto casted_actor{reinterpret_cast<ActorType*>(actor)};
+// 	auto actor_information{GetActorInformation(casted_actor)};
+// 	if (PERFORM_ERROR_CHECK(!actor_information, "{} deemed valid has no actor information attached",
+// 							typeid(ActorType).name()))
+// 		return false;
+
+// 	return actor_information->IsValid();
+// }
+// #endif
+
+LagCompensation&
+LagCompensation::GetInstance(void)
 {
 	static LagCompensation lag_compensation{};
 	return lag_compensation;
@@ -14,6 +61,12 @@ LagCompensation &LagCompensation::GetInstance(void)
 
 LagCompensation::LagCompensation()
 {
+
+	PLOG_INFO << std::format("Lag compensation: Tick rate = {} ms", tick_rate_);
+	PLOG_INFO << std::format("Lag compensation: Window = {} ms", window_in_ms_);
+	PLOG_INFO << std::format("Lag compensation: Minimum ping threshold = {} ms", kMinimumPingThreshold);
+	PLOG_INFO << std::format("Lag compensation: Maximum ping delta = {} ms", kMaxPingDelta);
+
 	pings_to_tick_in_latest_tick_.reserve(window_in_ms_);
 	list_of_players_in_latest_tick_.reserve(kEstimatedMaxPlayers);
 
@@ -72,8 +125,8 @@ LagCompensation::LagCompensation()
 
 	auto hook_type_vmt_at_index{[&get_vmt_function_index, &overwrite_vmt_at_index]<typename ActorType>(size_t vmt_function_index, void* original_function, void* function) -> void
 								{
-									auto objects{GetInstancesUObjects<ActorType>()};
-									for (auto &object : objects)
+									auto objects{GetInstancesOfUObjects<ActorType>()};
+									for (auto& object : objects)
 									{
 										if (get_vmt_function_index(object, vmt_function_index) == function)
 										{
@@ -106,53 +159,24 @@ LagCompensation::LagCompensation()
 
 LagCompensation::ActorObjectPoolTraits<Projectile>::InformationType* LagCompensation::AddProjectile(Projectile* projectile)
 {
-	if (PERFORM_ERROR_CHECK(!IsValid(projectile), "Projectile failed IsValid check"))
-		return false;
-
-	// Make sure the projectile was actually the right type, and not just casted as a Projectile
-	if (PERFORM_ERROR_CHECK(!projectile->IsA(Projectile::StaticClass()), "Projectile is not a {}, it is a {}",
-							typeid(Projectile).name(), projectile->GetFullName()))
-		return false;
-
-	// We've ensured projectile inherits from Projectile, but we need to check if it passes our own IsA check
-	if (PERFORM_ERROR_CHECK(!IsA<Projectile>(projectile), "Projectile failed the IsA<{}> check, it is a {}",
-							typeid(Projectile).name(), projectile->GetFullName()))
-		return false;
+	IS_ACTOR_VALID(projectile, return nullptr);
 
 	auto projectile_information{AllocateActorInformation(projectile)};
 	if (!projectile_information)
 	{
-		// This is fine. AllocateActorInformation can fail if ActorInformation<Projectile>::ShouldAllocate returns false
+		// This is fine. AllocateActorInformation can fail if ActorInformation<Projectile>::IsValid returns false
 		return nullptr;
 	}
 
-	auto instigator{reinterpret_cast<Player*>(projectile->Instigator)};
+	// IsValid was true, so the instigator and controller should be valid and of the correct types
+	auto player{reinterpret_cast<Player*>(projectile->Instigator)};
 	auto controller{reinterpret_cast<Controller*>(projectile->InstigatorController)};
 
-	// ShouldAllocate was true, so the instigator and controller should be valid and of the correct types
+	IS_ACTOR_VALID(controller, return nullptr);
+	IS_ACTOR_VALID(player, return nullptr);
 
-	// Make sure the controller was actually the right type, and not just casted as a Controller
-	if (PERFORM_ERROR_CHECK(!controller->IsA(Controller::StaticClass()), "Controller is not a {}, it is a {}",
-							typeid(Controller).name(), controller->GetFullName()))
-		return false;
-
-	// We've ensured controller inherits from Controller, but we need to check if it passes our own IsA check
-	if (PERFORM_ERROR_CHECK(!IsA<Controller>(controller), "Controller failed the IsA<{}> check, it is a {}",
-							typeid(Controller).name(), controller->GetFullName()))
-		return false;
-
-	// Make sure the player was actually the right type, and not just casted as a Player
-	if (PERFORM_ERROR_CHECK(!player->IsA(Player::StaticClass()), "Player is not a {}, it is a {}",
-							typeid(Player).name(), player->GetFullName()))
-		return false;
-
-	// We've ensured player inherits from Player, but we need to check if it passes our own IsA check
-	if (PERFORM_ERROR_CHECK(!IsA<Player>(player), "Player failed the IsA<{}> check, it is a {}",
-							typeid(Player).name(), player->GetFullName()))
-		return false;
-
-	auto ping_in_ms{controller->PlayerReplicationInfo->ExactPing * 4};
-	Team team{controller->PlayerReplicationInfo->Team->TeamIndex};
+	auto ping_in_ms{player->PlayerReplicationInfo->ExactPing * 4};
+	Team team{player->PlayerReplicationInfo->Team->TeamIndex};
 
 	projectile_information->ping_in_ms_ = ping_in_ms;
 	projectile_information->team_ = team;
@@ -172,6 +196,7 @@ LagCompensation::ActorObjectPoolTraits<Projectile>::InformationType* LagCompensa
 	else
 	{
 		controller_information = AllocateActorInformation(controller);
+		// Definately an error if AllocateActorInformation failed for a Controller
 		if (PERFORM_ERROR_CHECK(!controller_information, "Failed to allocate actor information"))
 		{
 			FreeActorInformation(projectile);
@@ -180,32 +205,26 @@ LagCompensation::ActorObjectPoolTraits<Projectile>::InformationType* LagCompensa
 		controller_information->last_ping_in_ms_ = projectile_information->ping_in_ms_;
 	}
 
+	IS_ACTOR_INFORMATION_VALID(controller, return nullptr);
+	IS_ACTOR_INFORMATION_VALID(projectile, return nullptr);
 	return projectile_information;
 }
 
 template <>
 bool LagCompensation::OnActorTick(Projectile* projectile)
 {
-	if (PERFORM_ERROR_CHECK(!IsValid(projectile), "Projectile failed IsValid check"))
-		return false;
-
-		// Make sure the projectile was actually the right type, and not just casted as a Projectile
-	if (PERFORM_ERROR_CHECK(!projectile->IsA(Projectile::StaticClass()), "Projectile is not a {}, it is a {}",
-							typeid(Projectile).name(), projectile->GetFullName()))
-		return false;
-
-	// We've ensured projectile inherits from Projectile, but we need to check if it passes our own IsA check
-	if (PERFORM_ERROR_CHECK(!IsA<Projectile>(projectile), "Projectile failed the IsA<{}> check, it is a {}",
-							typeid(Projectile).name(), projectile->GetFullName()))
-		return false;
+	IS_ACTOR_VALID(projectile, return false);
 
 	auto projectile_information{GetActorInformation(projectile)};
 	if (!projectile_information)
 	{
+		// Projectile is not lag compensated. Probably from a turret, vehicle, etc
 		return false;
 	}
 
-	auto &projectile_list{list_of_lag_compensated_projectiles_by_ping_in_latest_tick_[projectile_information->ping_in_ms_]};
+	IS_ACTOR_INFORMATION_VALID(projectile, return false);
+
+	auto& projectile_list{list_of_lag_compensated_projectiles_by_ping_in_latest_tick_[projectile_information->ping_in_ms_]};
 
 	if (projectile_list.empty())
 	{
@@ -229,29 +248,23 @@ bool LagCompensation::OnActorTick(Projectile* projectile)
 template <>
 bool LagCompensation::OnActorTick(Player* player)
 {
+	IS_ACTOR_TYPE_VALID(player);
+
 	// It could be possible that a player has Died but isn't Destroy'ed so it's still ticking
 	if (!IsValid(player))
 	{
 		return false;
 	}
 
-	// Make sure the player was actually the right type, and not just casted as a Player
-	if (PERFORM_ERROR_CHECK(!player->IsA(Player::StaticClass()), "Player is not a {}, it is a {}",
-						typeid(Player).name(), player->GetFullName()))
-		return false;
-
-	// We've ensured player inherits from Player, but we need to check if it passes our own IsA check
-	if (PERFORM_ERROR_CHECK(!IsA<Player>(player), "Player failed the IsA<{}> check, it is a {}",
-						typeid(Player).name(), player->GetFullName()))
-		return false;
-
+	IS_ACTOR_VALID(player); // Unneccessary at the moment because this is just IS_ACTOR_TYPE_VALID & IsValid as above
 
 	auto player_information{GetActorInformation(player)};
-	if (!player_information)
+	if (!player_information) // No information attached currently, lets attach it
 	{
 		player_information = AllocateActorInformation(player);
 		if (!player_information)
 		{
+			// Failure due to IsValid
 			return false;
 		}
 		Team team{player->PlayerReplicationInfo->Team->TeamIndex};
@@ -265,15 +278,14 @@ bool LagCompensation::OnActorTick(Player* player)
 
 	list_of_players_in_latest_tick_.push_back(player);
 
+	IS_ACTOR_INFORMATION_VALID(player, return false);
+
 	return true;
 }
 
 bool LagCompensation::RewindPlayers(Ping ping_in_ms)
 {
-	if (PERFORM_ERROR_CHECK(ping_in_ms < 0, "Ping argument is less than zero ({})", ping_in_ms))
-		return false;
-
-	if (PERFORM_ERROR_CHECK(ping_in_ms >= window_in_ms_, "Ping argument is equal to or greater than window ({})", ping_in_ms))
+	if (PERFORM_ERROR_CHECK(!IsPingValid(ping_in_ms), "Ping argument is invalid ({})", ping_in_ms))
 		return false;
 
 	if (PERFORM_ERROR_CHECK(team_per_ping_[ping_in_ms] == kUninitialisedTeam, "A ping of {} has an uninitialised team"))
@@ -286,35 +298,17 @@ bool LagCompensation::RewindPlayers(Ping ping_in_ms)
 	if (PERFORM_ERROR_CHECK(tick_index < 0, "Calculated tick_index is less than zero ({})", tick_index))
 		return false;
 
-	for (auto &player : list_of_players_in_latest_tick_)
+	for (auto& player : list_of_players_in_latest_tick_)
 	{
-		if (PERFORM_ERROR_CHECK(!player, "Player in list_of_players_in_latest_tick_ is nullptr"))
-			continue;
-
-		// Make sure the player was actually the right type, and not just casted as a Player
-		if (PERFORM_ERROR_CHECK(!player->IsA(Player::StaticClass()), "Player is not a {}, it is a {}",
-							typeid(Player).name(), player->GetFullName()))
-			continue;
-
-		// We've ensured player inherits from Player, but we need to check if it passes our own IsA check
-		if (PERFORM_ERROR_CHECK(!IsA<Player>(player), "Player failed the IsA<{}> check, it is a {}",
-							typeid(Player).name(), player->GetFullName()))
-			continue;
+		IS_ACTOR_VALID(player, continue);
 
 		// All players in list_of_players_in_latest_tick_ were valid (alive) before we got here
 		// Check they're still valid. If they are, then they should have a player information
 		if (IsValid(player))
 		{
+			IS_ACTOR_INFORMATION_VALID(player, continue);
+
 			auto player_information{GetActorInformation(player)};
-			if (PERFORM_ERROR_CHECK(!player_information, "Player deemed valid has no player information attached"))
-				continue;
-
-			if (PERFORM_ERROR_CHECK(player_information->tick_information_.Size() == 0, "Player deemed valid has an empty tick information in attached player information"))
-				continue;
-
-			if (PERFORM_ERROR_CHECK(player_information->team_ == kUninitialisedTeam || player_information->team_ == kInvalidTeam,
-									"Player deemed valid belongs to an invalid team"))
-				continue;
 
 			if (all_projectiles_are_from_same_ping_bucket && player_information->team_ == team_per_ping_[ping_in_ms])
 			{
@@ -323,8 +317,8 @@ bool LagCompensation::RewindPlayers(Ping ping_in_ms)
 
 			if (prev_index < player_information->tick_information_.Size())
 			{
-				const auto &tick_location{player_information->tick_information_[tick_index].location_};
-				const auto &prev_location{player_information->tick_information_[prev_index].location_};
+				const auto& tick_location{player_information->tick_information_[tick_index].location_};
+				const auto& prev_location{player_information->tick_information_[prev_index].location_};
 
 				auto delta{Subtract_VectorVector(prev_location, tick_location)};
 				static constexpr auto interpolate_scalar{0.5};
@@ -340,31 +334,18 @@ bool LagCompensation::RewindPlayers(Ping ping_in_ms)
 
 void LagCompensation::RestorePlayers(void)
 {
-	for (auto &player : list_of_players_in_latest_tick_)
+	for (auto& player : list_of_players_in_latest_tick_)
 	{
-		if (PERFORM_ERROR_CHECK(!player, "Player in list_of_players_in_latest_tick_ is nullptr"))
-			continue;
-
-		// Make sure the player was actually the right type, and not just casted as a Player
-		if (PERFORM_ERROR_CHECK(!player->IsA(Player::StaticClass()), "Player is not a {}, it is a {}",
-							typeid(Player).name(), player->GetFullName()))
-			continue;
-
-		// We've ensured player inherits from Player, but we need to check if it passes our own IsA check
-		if (PERFORM_ERROR_CHECK(!IsA<Player>(player), "Player failed the IsA<{}> check, it is a {}",
-							typeid(Player).name(), player->GetFullName()))
-			continue;
+		IS_ACTOR_VALID(player, continue);
 
 		// All players in list_of_players_in_latest_tick_ were valid (alive) before we got here
 		// Check they're still valid. If they are, then they should have a player information
 		if (IsValid(player))
 		{
-			auto player_information{GetActorInformation(player)};
-			if (PERFORM_ERROR_CHECK(!player_information, "Player deemed valid has no player information attached"))
-				continue;
+			IS_ACTOR_INFORMATION_VALID(player, continue);
 
-			if (PERFORM_ERROR_CHECK(player_information->tick_information_.Size() == 0, "Player deemed valid has an empty tick information in attached player information"))
-				continue;
+			auto player_information{GetActorInformation(player)};
+
 			original_world_farmoveactor(global_world, nullptr, player, player_information->tick_information_[0].location_, 0, 1, 0);
 		}
 	}
@@ -379,10 +360,10 @@ void LagCompensation::Tick(float delta_seconds, ELevelTick tick_type)
 
 	for (auto ping_in_ms : pings_to_tick_in_latest_tick_)
 	{
-		if (PERFORM_ERROR_CHECK(ping_in_ms < 0, "Ping is ping_in_ms is less than zero ({})", ping_in_ms))
+		if (PERFORM_ERROR_CHECK(IsPingValid(ping_in_ms), "Ping is invalid ({})", ping_in_ms))
 			continue;
 
-		auto &list_of_projectiles{list_of_lag_compensated_projectiles_by_ping_in_latest_tick_[ping_in_ms]};
+		auto& list_of_projectiles{list_of_lag_compensated_projectiles_by_ping_in_latest_tick_[ping_in_ms]};
 
 		if (PERFORM_ERROR_CHECK(list_of_projectiles.empty(), "List of projectiles for ping {} is empty", ping_in_ms))
 			continue;
@@ -390,20 +371,9 @@ void LagCompensation::Tick(float delta_seconds, ELevelTick tick_type)
 		performed_rewind_of_players |= RewindPlayers(ping_in_ms);
 
 		// Even if RewindPlayers encounters an error, we still should tick the projectiles
-		for (auto &projectile : list_of_projectiles)
+		for (auto& projectile : list_of_projectiles)
 		{
-			if (PERFORM_ERROR_CHECK(!IsValid(projectile), "Projectile attempting to tick was deemed invalid"))
-				continue;
-
-			// Make sure the projectile was actually the right type, and not just casted as a Projectile
-			if (PERFORM_ERROR_CHECK(!projectile->IsA(Projectile::StaticClass()), "Projectile is not a {}, it is a {}",
-									typeid(Projectile).name(), projectile->GetFullName()))
-				continue;
-
-			// We've ensured projectile inherits from Projectile, but we need to check if it passes our own IsA check
-			if (PERFORM_ERROR_CHECK(!IsA<Projectile>(projectile), "Projectile failed the IsA<{}> check, it is a {}",
-									typeid(Projectile).name(), projectile->GetFullName()))
-				continue;
+			IS_ACTOR_VALID(projectile, continue); // Hopefully, not critical error if not though
 
 			// Actually make the projectile Tick through the original native engine function
 			if (IsValid(projectile))
@@ -449,19 +419,11 @@ void __fastcall LagCompensation::ActorTick<Player>(Player* player, void* unused,
 		return original_pawn_tick(player, nullptr, delta_seconds, tick_type);
 	}
 
-	static auto &lag_compensation{LagCompensation::GetInstance()};
+	IS_ACTOR_TYPE_VALID(player, original_pawn_tick(player, nullptr, delta_seconds, tick_type));
+
+	static auto& lag_compensation{LagCompensation::GetInstance()};
 
 	original_pawn_tick(player, nullptr, delta_seconds, tick_type);
-
-	// Make sure the player was actually the right type, and not just casted as a Player
-	if (PERFORM_ERROR_CHECK(!player->IsA(Player::StaticClass()), "Player is not a {}, it is a {}",
-							typeid(Player).name(), player->GetFullName()))
-		return;
-
-	// We've ensured player inherits from Player, but we need to check if it passes our own IsA check
-	if (PERFORM_ERROR_CHECK(!IsA<Player>(player), "Player failed the IsA<{}> check, it is a {}",
-							typeid(Player).name(), player->GetFullName()))
-		return;
 
 	// NOTE: After ticking Player *may* become invalid. Ensure to call engine tick first
 	// All Players are ticked in lag compensation
@@ -479,17 +441,9 @@ static void __fastcall LagCompensation::ActorTick<Projectile>(Projectile* projec
 		return original_actor_tick(projectile, nullptr, delta_seconds, tick_type);
 	}
 
-	// Make sure the projectile was actually the right type, and not just casted as a Projectile
-	if (PERFORM_ERROR_CHECK(!projectile->IsA(Projectile::StaticClass()), "Projectile is not a {}, it is a {}",
-							typeid(Projectile).name(), projectile->GetFullName()))
-		return original_actor_tick(projectile, nullptr, delta_seconds, tick_type);
+	IS_ACTOR_VALID(projectile, original_actor_tick(projectile, nullptr, delta_seconds, tick_type));
 
-	// We've ensured projectile inherits from Projectile, but we need to check if it passes our own IsA check
-	if (PERFORM_ERROR_CHECK(!IsA<Projectile>(projectile), "Projectile failed the IsA<{}> check, it is a {}",
-							typeid(Projectile).name(), projectile->GetFullName()))
-		return original_actor_tick(projectile, nullptr, delta_seconds, tick_type);
-
-	static auto &lag_compensation{LagCompensation::GetInstance()};
+	static auto& lag_compensation{LagCompensation::GetInstance()};
 	if (!lag_compensation.OnActorTick(projectile))
 	{
 		// Return value tells us if we should absorb the call the below
