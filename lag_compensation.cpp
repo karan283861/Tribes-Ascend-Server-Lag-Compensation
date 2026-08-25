@@ -5,6 +5,7 @@
 #include "lag_compensation.hpp"
 #include "helper.hpp"
 #include "native_hooks.hpp"
+#include "processinternal_hooks.hpp"
 
 // #define ACTORTYPE_POSTVALIDATION(POINTER_TO_ACTOR, STATEMENT_ON_ERROR)
 
@@ -248,7 +249,7 @@ bool LagCompensation::OnActorTick(Projectile* projectile)
 template <>
 bool LagCompensation::OnActorTick(Player* player)
 {
-	IS_ACTOR_TYPE_VALID(player);
+	IS_ACTOR_TYPE_VALID(player, return false);
 
 	// It could be possible that a player has Died but isn't Destroy'ed so it's still ticking
 	if (!IsValid(player))
@@ -256,7 +257,7 @@ bool LagCompensation::OnActorTick(Player* player)
 		return false;
 	}
 
-	IS_ACTOR_VALID(player); // Unneccessary at the moment because this is just IS_ACTOR_TYPE_VALID & IsValid as above
+	IS_ACTOR_VALID(player, return false); // Unneccessary at the moment because this is just IS_ACTOR_TYPE_VALID & IsValid as above
 
 	auto player_information{GetActorInformation(player)};
 	if (!player_information) // No information attached currently, lets attach it
@@ -399,6 +400,48 @@ void LagCompensation::Tick(float delta_seconds, ELevelTick tick_type)
 	// {
 	// 	team_per_ping_[ping] = kUninitialisedTeam;
 	// }
+}
+
+UE3_PROCESSINTERNAL_HOOK(LagCompensation::OnProjectileRadialDamage)
+{
+	auto projectile{reinterpret_cast<Projectile*>(calling_uobject)};
+
+	IS_ACTOR_VALID(projectile, original_processinternal(calling_uobject, unused, stack, result));
+
+	auto instigator{reinterpret_cast<Player*>(projectile->Instigator)};
+
+	auto projectile_information{GetActorInformation(projectile)};
+
+	// A non lag compensated projectile. Could be fired from a turret, vehicle, etc
+	if (!projectile_information)
+	{
+		return original_processinternal(calling_uobject, unused, stack, result);
+	}
+
+	IS_ACTOR_INFORMATION_VALID(projectile, return original_processinternal(calling_uobject, unused, stack, result));
+
+	auto rewind{RewindPlayers(projectile_information->ping_in_ms_)};
+	// An invalid instigator means the instigator has Died or Destroy'ed
+	if (rewind && IsA<Player>(instigator) && IsValid(instigator))
+	{
+		// The instigator should never change once the projectile is created (UNLESS it is set to nullptr through GC)
+		IS_ACTOR_VALID(instigator, RestorePlayers(); return original_processinternal(calling_uobject, unused, stack, result));
+		IS_ACTOR_INFORMATION_VALID(instigator, RestorePlayers(); return original_processinternal(calling_uobject, unused, stack, result));
+
+		auto player_information{GetActorInformation(instigator)};
+		instigator->SetLocation(player_information->tick_information_[0].location_);
+	}
+
+	// Apply splash (radial) damage.
+	original_processinternal(calling_uobject, unused, stack, result);
+
+	if (rewind)
+	{
+		RestorePlayers();
+	}
+
+	// Let UTProjectileDestroyed take care of calling FreeActorInformation
+	// FreeActorInformation(projectile);
 }
 
 size_t LagCompensation::GetActorInformationIndex(AActor* actor)

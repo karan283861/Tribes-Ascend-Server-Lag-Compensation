@@ -53,7 +53,7 @@ constexpr bool PerformErrorCheck(bool error_condition, const DiagnosticMessage& 
 			PLOG_ERROR << std::string(10, '=') + "\n"
 					   << std::vformat(full_format_string, std::make_format_args(args..., function_signature, diagnostic_message.line_)) << "\n"
 					   << std::string(10, '-') << "\n"
-					   << std::stacktrace::current() << "\n"
+					   << std::to_string(std::stacktrace::current()) << "\n"
 					   << std::string(10, '=') << "\n";
 		};
 		assert(!error_condition);

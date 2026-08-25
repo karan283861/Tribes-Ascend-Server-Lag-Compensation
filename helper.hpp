@@ -142,8 +142,8 @@ ActorType* IsA(Actor* actor)
 		const auto* super_class{actor->Class->SuperField};
 
 		// Most controllers will be of type Controller, very unlikey they will be a derived type
-		result = (object->Class == controller_class) ||
-				 (super_class == controller_class);
+		auto result = (actor->Class == controller_class) ||
+					  (super_class == controller_class);
 		return result ? casted_actor : nullptr;
 	}
 	else if constexpr (std::is_same_v<ActorType, Player>)
@@ -155,8 +155,8 @@ ActorType* IsA(Actor* actor)
 		const auto* player_class{Player::StaticClass()};
 		const auto* super_class{actor->Class->SuperField};
 		// Most players will be of type Player, very unlikey they will be a derived type
-		result = (object->Class == player_class) ||
-				 (super_class == player_class);
+		auto result = (actor->Class == player_class) ||
+					  (super_class == player_class);
 		return result ? casted_actor : nullptr;
 	}
 	else if constexpr (kPerformErrorChecks)
@@ -168,7 +168,7 @@ ActorType* IsA(Actor* actor)
 		if constexpr (std::is_same_v<ActorType, Projectile>)
 		{
 			// auto projectile{reinterpret_cast<Projectile*>(actor)};
-			result = object->IsA(Projectile::StaticClass());
+			auto result = actor->IsA(Projectile::StaticClass());
 			return result ? casted_actor : nullptr;
 		}
 	}

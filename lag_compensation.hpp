@@ -2,16 +2,17 @@
 
 #include <cstddef>
 #include <array>
-#include <vcruntime_typeinfo.h>
+#include <typeinfo>
 #include <vector>
 #include <tuple>
 #include <cassert>
 #include <SdkHeaders.h>
-#include "Circular-Buffer/circular_buffer.hpp"
-#include "helper.hpp"
-#include "native_hooks.hpp"
-#include "Object-Pool/object_pool.hpp"
 #include "validate.hpp"
+#include "helper.hpp"
+#include <circular_buffer.hpp>
+#include <object_pool.hpp>
+#include "native_hooks.hpp"
+#include "processinternal_hooks.hpp"
 
 template <typename T>
 concept HasReset = requires(T& t) {
@@ -20,7 +21,8 @@ concept HasReset = requires(T& t) {
 
 #define IS_ACTOR_INFORMATION_VALID(POINTER_TO_ACTOR, STATEMENT_ON_ERROR)                                            \
 	{                                                                                                               \
-		auto actor_information{GetActorInformation(POINTER_TO_ACTOR)};                                              \
+		auto& lag_compensation{LagCompensation::GetInstance()};                                                     \
+		auto actor_information{lag_compensation.GetActorInformation(POINTER_TO_ACTOR)};                             \
 		if (PERFORM_ERROR_CHECK(!actor_information,                                                                 \
 								"{} is a {} and is deemed valid but has no actor information attached",             \
 								#POINTER_TO_ACTOR,                                                                  \
@@ -163,6 +165,8 @@ class LagCompensation
 	template <>
 	struct ActorInformation<Controller> : public ActorInformationBase
 	{
+		ActorInformation<Controller>() = default;
+
 		Ping last_ping_in_ms_{};
 
 		static constexpr bool IsValid(Controller* controller)
@@ -230,12 +234,14 @@ class LagCompensation
 	template <>
 	struct ActorInformation<Projectile> : public ActorInformationBase
 	{
+		ActorInformation<Projectile>() = default;
+
 		Ping ping_in_ms_{};
 		Team team_{kInvalidTeam};
 
 		static bool IsValid(Projectile* projectile)
 		{
-			IS_ACTOR_VALID(projectile);
+			IS_ACTOR_VALID(projectile, return false);
 
 			Controller* controller{};
 			Player* player{};
@@ -245,8 +251,8 @@ class LagCompensation
 				false;
 			}
 
-			IS_ACTOR_VALID(controller);
-			IS_ACTOR_VALID(player);
+			IS_ACTOR_VALID(controller, return false);
+			IS_ACTOR_VALID(player, return false);
 
 			auto ping_in_ms{player->PlayerReplicationInfo->ExactPing * 4};
 			Team team{player->PlayerReplicationInfo->Team->TeamIndex};
@@ -348,6 +354,7 @@ class LagCompensation
 	bool RewindPlayers(Ping ping_in_ms);
 	void RestorePlayers(void);
 	void Tick(float delta_seconds, ELevelTick tick_type);
+	UE3_PROCESSINTERNAL_HOOK(OnProjectileRadialDamage);
 
 	private:
 	template <IsAnActor ActorType>
@@ -421,8 +428,9 @@ LagCompensation::ActorObjectPoolTraits<ActorType>::InformationType* LagCompensat
 template <IsAnActor ActorType>
 void LagCompensation::FreeActorInformation(ActorType* actor)
 {
-	// We shouldn't check if actor IsValid here, because failing IsValid is not error
-	IS_ACTOR_TYPE_VALID(actor, ;);
+	// We shouldn't check if actor IsValid here (IS_ACTOR_VALID), because failing IsValid is not error
+	// We also shouldn't check the actor matches the type (IS_ACTOR_TYPE_VALID), because currently ATrPawn::Died will forward
+	// actor casted as a Player when it could be a turret
 
 	auto index{GetActorInformationIndex(actor)};
 	if (index == kInvalidObjectPoolIndex)
@@ -445,5 +453,7 @@ void LagCompensation::FreeActorInformation(ActorType* actor)
 	// If we don't set the index back to an invalid value, UTProjectileDestroyed may call
 	// this function again which is pointless AND erroneous because we will free the index
 	// in the object pool again (this index will be re-added back into the list of free indexes).
+	// NOTE: As of recently, TrProjectileHurtRadiusInternal (OnProjectileRadialDamage) does NOT call
+	// FreeActorInformation
 	*reinterpret_cast<size_t*>(&actor->EditorIconColor) = kInvalidObjectPoolIndex;
 }

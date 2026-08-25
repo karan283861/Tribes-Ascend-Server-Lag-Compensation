@@ -8,47 +8,11 @@
 UE3_PROCESSINTERNAL_HOOK(TrProjectileHurtRadiusInternal)
 {
 	auto projectile{reinterpret_cast<Projectile*>(calling_uobject)};
-	auto instigator{reinterpret_cast<Player*>(projectile->Instigator)};
-
 	static auto& lag_compensation{LagCompensation::GetInstance()};
-	auto projectile_information{lag_compensation.GetActorInformation(projectile)};
 
-	// A non lag compensated projectile. Could be fired from a turret, vehicle, etc
-	if (!projectile_information)
-	{
-		return original_processinternal(calling_uobject, unused, stack, result);
-	}
+	IS_ACTOR_VALID(projectile, ;)
 
-	auto rewind{lag_compensation.RewindPlayers(projectile_information->ping_in_ms_)};
-	// An invalid instigator means the instigator has Died or Destroy'ed
-	if (rewind && IsValid(instigator))
-	{
-		// // The instigator should never change once the projectile is created (UNLESS it is set to nullptr)
-		// if (PERFORM_ERROR_CHECK(!IsA<Player>(instigator), "Projectile instigator is NOT a Player, it is a {}",
-		// 						instigator->GetFullName()))
-		// 	;
-
-		auto player_information{lag_compensation.GetActorInformation(instigator)};
-		if (PERFORM_ERROR_CHECK(!player_information, "A player deemed valid has no player information attached"))
-		{
-			original_processinternal(calling_uobject, unused, stack, result);
-			lag_compensation.RestorePlayers();
-			lag_compensation.FreeActorInformation(projectile);
-			return;
-		}
-
-		instigator->SetLocation(player_information->tick_information_[0].location_);
-	}
-
-	// Apply splash (radial) damage.
-	original_processinternal(calling_uobject, unused, stack, result);
-
-	if (rewind)
-	{
-		lag_compensation.RestorePlayers();
-	}
-
-	lag_compensation.FreeActorInformation(projectile);
+	lag_compensation.OnProjectileRadialDamage(calling_uobject, unused, stack, result);
 }
 
 UE3_PROCESSINTERNAL_HOOK(TrProjectilePostBeginPlay)
@@ -57,6 +21,8 @@ UE3_PROCESSINTERNAL_HOOK(TrProjectilePostBeginPlay)
 
 	auto projectile{reinterpret_cast<Projectile*>(calling_uobject)};
 	static auto& lag_compensation{LagCompensation::GetInstance()};
+
+	IS_ACTOR_VALID(projectile, ;)
 
 	// No guarantee the projectile should be lag compensated
 	// Doesn't really matter, forward it to lag compensation which will perform validation and take
@@ -71,6 +37,8 @@ UE3_PROCESSINTERNAL_HOOK(UTProjectileDestroyed)
 	auto projectile{reinterpret_cast<Projectile*>(calling_uobject)};
 	static auto& lag_compensation{LagCompensation::GetInstance()};
 
+	IS_ACTOR_VALID(projectile, ;)
+
 	// No guarantee the projectile is actually lag compensated (has an actor information attached)
 	// Doesn't really matter, forward it to lag compensation which will perform validation and take
 	// care of it if needed
@@ -84,7 +52,9 @@ UE3_PROCESSINTERNAL_HOOK(TrPawnDied)
 	auto player{reinterpret_cast<Player*>(calling_uobject)};
 	static auto& lag_compensation{LagCompensation::GetInstance()};
 
-	// No guarantee the pawn is a player (could be a vehicle?). Doesn't really matter, forward it
+	// A TrPawn may not be a Player, it could be a turret. Thus we don't do a IS_ACTOR_VALID check here
+
+	// No guarantee the pawn is a player (could be a turret?). Doesn't really matter, forward it
 	// to lag compensation which will perform validation and take care of it if needed
 	lag_compensation.FreeActorInformation(player);
 }
