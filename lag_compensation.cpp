@@ -301,12 +301,14 @@ bool LagCompensation::RewindPlayers(Ping ping_in_ms)
 
 	for (auto& player : list_of_players_in_latest_tick_)
 	{
-		IS_ACTOR_VALID(player, continue);
+		IS_ACTOR_TYPE_VALID(player, continue);
 
 		// All players in list_of_players_in_latest_tick_ were valid (alive) before we got here
 		// Check they're still valid. If they are, then they should have a player information
 		if (IsValid(player))
 		{
+			// Player could have died, so check IS_ACTOR_VALID AFTER IsValid
+			IS_ACTOR_VALID(player, continue);
 			IS_ACTOR_INFORMATION_VALID(player, continue);
 
 			auto player_information{GetActorInformation(player)};
@@ -337,12 +339,13 @@ void LagCompensation::RestorePlayers(void)
 {
 	for (auto& player : list_of_players_in_latest_tick_)
 	{
-		IS_ACTOR_VALID(player, continue);
-
+		IS_ACTOR_TYPE_VALID(player, continue);
 		// All players in list_of_players_in_latest_tick_ were valid (alive) before we got here
 		// Check they're still valid. If they are, then they should have a player information
 		if (IsValid(player))
 		{
+			// Player could have died, so check IS_ACTOR_VALID AFTER IsValid
+			IS_ACTOR_VALID(player, continue);
 			IS_ACTOR_INFORMATION_VALID(player, continue);
 
 			auto player_information{GetActorInformation(player)};
@@ -361,7 +364,7 @@ void LagCompensation::Tick(float delta_seconds, ELevelTick tick_type)
 
 	for (auto ping_in_ms : pings_to_tick_in_latest_tick_)
 	{
-		if (PERFORM_ERROR_CHECK(IsPingValid(ping_in_ms), "Ping is invalid ({})", ping_in_ms))
+		if (PERFORM_ERROR_CHECK(!IsPingValid(ping_in_ms), "Ping is invalid ({})", ping_in_ms))
 			continue;
 
 		auto& list_of_projectiles{list_of_lag_compensated_projectiles_by_ping_in_latest_tick_[ping_in_ms]};

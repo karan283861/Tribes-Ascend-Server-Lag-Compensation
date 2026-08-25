@@ -248,7 +248,7 @@ class LagCompensation
 
 			if (!((controller = IsValidAndIsA<Controller>(projectile->InstigatorController)) && (player = IsValidAndIsA<Player>(projectile->Instigator))))
 			{
-				false;
+				return false;
 			}
 
 			IS_ACTOR_VALID(controller, return false);

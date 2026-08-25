@@ -50,7 +50,7 @@ concept IsAnActor = std::derived_from<ActorType, Actor>;
 
 #define IS_ACTOR_VALID(POINTER_TO_ACTOR, STATEMENT_ON_ERROR)             \
 	IS_ACTOR_TYPE_VALID(POINTER_TO_ACTOR, STATEMENT_ON_ERROR)            \
-	if (PERFORM_ERROR_CHECK(::IsValid(POINTER_TO_ACTOR),                 \
+	if (PERFORM_ERROR_CHECK(!::IsValid(POINTER_TO_ACTOR),                \
 							"{} is a {} and failed IsValid check",       \
 							#POINTER_TO_ACTOR,                           \
 							typeid(decltype(*POINTER_TO_ACTOR)).name())) \

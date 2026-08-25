@@ -49,11 +49,28 @@ constexpr bool PerformErrorCheck(bool error_condition, const DiagnosticMessage& 
 	{
 		if (error_condition)
 		{
-			auto full_format_string{"Error:\t" + static_cast<std::string>(diagnostic_message) + "\t@\t{}:{}\n"};
-			PLOG_ERROR << std::string(10, '=') + "\n"
+			auto stack_trace{std::stacktrace::current()};
+			std::ostringstream oss_stack_trace{};
+			// oss_stack_trace << stack_trace;
+
+			for (auto i{std::size_t(0)}; i < stack_trace.size(); ++i)
+			{
+				const auto& frame{stack_trace[i]};
+				oss_stack_trace << i << "."
+								<< "\tnative\t=\t" << frame.native_handle()
+								<< "\tdescription\t=\t[" << frame.description() << "]"
+								<< "\tfile\t=\t[" << frame.source_file() << "]"
+								<< "\tline\t=\t" << frame.source_line()
+								<< '\n';
+			}
+
+			constexpr auto padding{std::size_t(20)};
+			auto full_format_string{"Error:\t" + static_cast<std::string>(diagnostic_message) + "\t@\t{}:{}"};
+			PLOG_ERROR << "\n" + std::string(10, '=') + "\n"
 					   << std::vformat(full_format_string, std::make_format_args(args..., function_signature, diagnostic_message.line_)) << "\n"
 					   << std::string(10, '-') << "\n"
-					   << std::to_string(std::stacktrace::current()) << "\n"
+					   << oss_stack_trace.str() << "\n"
+					   << stack_trace.size() << "\n"
 					   << std::string(10, '=') << "\n";
 		};
 		assert(!error_condition);

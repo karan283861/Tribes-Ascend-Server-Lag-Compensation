@@ -30,7 +30,7 @@ void PerformUFunctionHooks(void)
 																					 {"Function TribesGame.TrProjectile.HurtRadius_Internal", TrProjectileHurtRadiusInternal},
 																					 {"Function TribesGame.TrPawn.Died", TrPawnDied}};
 
-	auto get_ufunction = [](const std::string &ufunction_name)
+	auto get_ufunction = [](const std::string& ufunction_name)
 	{
 		return UObject::FindObject<UFunction>(ufunction_name.c_str());
 	};
@@ -58,7 +58,8 @@ void OnDLLProcessAttach()
 	plog::init(plog::info, &file_appender);
 
 	PLOG_INFO << std::format("Successfully Injected DLL");
-	PLOG_INFO << std::format("Base address: {0}", reinterpret_cast<void*>(base_address));
+	PLOG_INFO << std::format("Base address of TribesAscend.exe: {0}", reinterpret_cast<void*>(base_address));
+	PLOG_INFO << std::format("Base address of this DLL: {0}", reinterpret_cast<void*>(GetModuleHandleA("TribesAscendServerLagCompensation.dll")));
 
 	original_processinternal = reinterpret_cast<ProcessInternalPrototype>(kProcessInternalAddress);
 
@@ -67,7 +68,7 @@ void OnDLLProcessAttach()
 
 	// Hook native functions
 	// Perform lag compensation after all actors have ticked
-	DetourAttach(&(PVOID &)original_tickactors_preasyncwork, TickActorsPreAsyncWorkHook);
+	DetourAttach(&(PVOID&)original_tickactors_preasyncwork, TickActorsPreAsyncWorkHook);
 
 	// Make sure all detours attaches are placed BEFORE this call
 	// Make sure UFunctionHooks objects are created AFTER this call
