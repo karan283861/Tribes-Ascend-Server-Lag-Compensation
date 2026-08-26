@@ -289,7 +289,7 @@ bool LagCompensation::RewindPlayers(Ping ping_in_ms)
 	if (PERFORM_ERROR_CHECK(!IsPingValid(ping_in_ms), "Ping argument is invalid ({})", ping_in_ms))
 		return false;
 
-	if (PERFORM_ERROR_CHECK(team_per_ping_[ping_in_ms] == kUninitialisedTeam, "A ping of {} has an uninitialised team"))
+	if (PERFORM_ERROR_CHECK(team_per_ping_[ping_in_ms] == kUninitialisedTeam, "A ping of {} has an uninitialised team", ping_in_ms))
 		;
 
 	bool all_projectiles_are_from_same_ping_bucket{team_per_ping_[ping_in_ms] != kInvalidTeam};
