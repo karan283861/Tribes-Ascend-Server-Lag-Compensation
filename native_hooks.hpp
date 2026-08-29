@@ -23,7 +23,7 @@ extern ActorTickPrototype original_actor_tick;
 using PawnTickPrototype = void(__fastcall*)(APawn* pawn, void* unused, float delta_seconds, ELevelTick tick_type);
 extern PawnTickPrototype original_pawn_tick;
 
-using WorldFarMoveActor = unsigned int(__fastcall*)(UWorld* world, void* unused, AActor* Actor, const FVector &DestLocation, unsigned int test, unsigned int bNoCheck, unsigned int bAttachedMove);
+using WorldFarMoveActor = unsigned int(__fastcall*)(UWorld* world, void* unused, AActor* Actor, const Vector3D &DestLocation, unsigned int test, unsigned int bNoCheck, unsigned int bAttachedMove);
 extern WorldFarMoveActor original_world_farmoveactor;
 
 extern bool ticking_TG_PreAsyncWork;

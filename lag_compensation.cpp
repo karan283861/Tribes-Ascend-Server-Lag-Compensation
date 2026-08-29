@@ -69,9 +69,9 @@ LagCompensation::LagCompensation()
 	PLOG_INFO << std::format("Lag compensation: Maximum ping delta = {} ms", kMaxPingDelta);
 
 	pings_to_tick_in_latest_tick_.reserve(window_in_ms_);
-	list_of_players_in_latest_tick_.reserve(kEstimatedMaxPlayers);
+	players_in_tick_.reserve(kEstimatedMaxPlayers);
 
-	for (auto i{std::size_t{0}}; i < list_of_lag_compensated_projectiles_by_ping_in_latest_tick_.size(); i++)
+	for (auto i{std::size_t{0}}; i < lag_compensated_projectiles_by_ping_in_tick_.size(); i++)
 	{
 		if (i <= kMinimumPingThreshold || i >= window_buffer_size_)
 		{
@@ -82,7 +82,7 @@ LagCompensation::LagCompensation()
 		// WARNING: This hasn't been confirmed
 		if (i % 4 == 0)
 		{
-			list_of_lag_compensated_projectiles_by_ping_in_latest_tick_[i].reserve(kEstimatedMaxProjectilesPerPing);
+			lag_compensated_projectiles_by_ping_in_tick_[i].reserve(kEstimatedMaxProjectilesPerPing);
 		}
 	}
 
@@ -124,7 +124,7 @@ LagCompensation::LagCompensation()
 								}};
 	constexpr size_t vmt_aactor_tick_index{98};
 
-	auto hook_type_vmt_at_index{[&get_vmt_function_index, &overwrite_vmt_at_index]<typename ActorType>(size_t vmt_function_index, void* original_function, void* function) -> void
+	auto hook_type_vmt_at_index{[&get_vmt_function_index, &overwrite_vmt_at_index]<IsAnActor ActorType>(size_t vmt_function_index, void* original_function, void* function) -> void
 								{
 									auto objects{GetInstancesOfUObjects<ActorType>()};
 									for (auto& object : objects)
@@ -153,9 +153,12 @@ LagCompensation::LagCompensation()
 									}
 								}};
 
-	hook_type_vmt_at_index.operator()<Player>(vmt_aactor_tick_index, original_pawn_tick, reinterpret_cast<void*>(&ActorTick<Player>));
+	hook_type_vmt_at_index.operator()<Player>(vmt_aactor_tick_index, original_pawn_tick, static_cast<void(__fastcall *)(Player*, void*, float, ELevelTick)>(&LagCompensation::OnActorTick));
 
-	hook_type_vmt_at_index.operator()<Projectile>(vmt_aactor_tick_index, original_actor_tick, reinterpret_cast<void*>(&ActorTick<Projectile>));
+	hook_type_vmt_at_index.operator()<Projectile>(vmt_aactor_tick_index, original_actor_tick, static_cast<void(__fastcall *)(Projectile*, void*, float, ELevelTick)>(&LagCompensation::OnActorTick));
+
+	hook_type_vmt_at_index.operator()<Flag>(vmt_aactor_tick_index, original_actor_tick, static_cast<void(__fastcall *)(Flag*, void*, float, ELevelTick)>(&LagCompensation::OnActorTick));
+
 }
 
 LagCompensation::ActorObjectPoolTraits<Projectile>::InformationType* LagCompensation::AddProjectile(Projectile* projectile)
@@ -211,7 +214,6 @@ LagCompensation::ActorObjectPoolTraits<Projectile>::InformationType* LagCompensa
 	return projectile_information;
 }
 
-template <>
 bool LagCompensation::OnActorTick(Projectile* projectile)
 {
 	IS_ACTOR_VALID(projectile, return false);
@@ -225,7 +227,7 @@ bool LagCompensation::OnActorTick(Projectile* projectile)
 
 	IS_ACTOR_INFORMATION_VALID(projectile, return false);
 
-	auto& projectile_list{list_of_lag_compensated_projectiles_by_ping_in_latest_tick_[projectile_information->ping_in_ms_]};
+	auto& projectile_list{lag_compensated_projectiles_by_ping_in_tick_[projectile_information->ping_in_ms_]};
 
 	if (projectile_list.empty())
 	{
@@ -246,7 +248,6 @@ bool LagCompensation::OnActorTick(Projectile* projectile)
 	return true;
 }
 
-template <>
 bool LagCompensation::OnActorTick(Player* player)
 {
 	IS_ACTOR_TYPE_VALID(player, return false);
@@ -272,16 +273,20 @@ bool LagCompensation::OnActorTick(Player* player)
 		player_information->team_ = team;
 	}
 
-	ActorInformation<Player>::PlayerTickInformation player_tick_information{};
+	ActorTickInformation<Player> player_tick_information{};
 	player_tick_information.location_ = player->Location;
-	player_tick_information.velocity_ = player->Velocity;
-	player_information->tick_information_.PushBack(std::move(player_tick_information));
+	player_information->rewind_information_.PushBack(std::move(player_tick_information));
 
-	list_of_players_in_latest_tick_.push_back(player);
+	players_in_tick_.push_back(player);
 
 	IS_ACTOR_INFORMATION_VALID(player, return false);
 
 	return true;
+}
+
+bool LagCompensation::OnActorTick(Flag* player)
+{
+	return false;
 }
 
 bool LagCompensation::RewindPlayers(Ping ping_in_ms)
@@ -299,11 +304,11 @@ bool LagCompensation::RewindPlayers(Ping ping_in_ms)
 	if (PERFORM_ERROR_CHECK(tick_index < 0, "Calculated tick_index is less than zero ({})", tick_index))
 		return false;
 
-	for (auto& player : list_of_players_in_latest_tick_)
+	for (auto& player : players_in_tick_)
 	{
 		IS_ACTOR_TYPE_VALID(player, continue);
 
-		// All players in list_of_players_in_latest_tick_ were valid (alive) before we got here
+		// All players in players_in_tick_ were valid (alive) before we got here
 		// Check they're still valid. If they are, then they should have a player information
 		if (IsValid(player))
 		{
@@ -318,10 +323,10 @@ bool LagCompensation::RewindPlayers(Ping ping_in_ms)
 				continue;
 			}
 
-			if (prev_index < player_information->tick_information_.Size())
+			if (prev_index < player_information->rewind_information_.Size())
 			{
-				const auto& tick_location{player_information->tick_information_[tick_index].location_};
-				const auto& prev_location{player_information->tick_information_[prev_index].location_};
+				const auto& tick_location{player_information->rewind_information_[tick_index].location_};
+				const auto& prev_location{player_information->rewind_information_[prev_index].location_};
 
 				auto delta{Subtract_VectorVector(prev_location, tick_location)};
 				static constexpr auto interpolate_scalar{0.5};
@@ -337,10 +342,10 @@ bool LagCompensation::RewindPlayers(Ping ping_in_ms)
 
 void LagCompensation::RestorePlayers(void)
 {
-	for (auto& player : list_of_players_in_latest_tick_)
+	for (auto& player : players_in_tick_)
 	{
 		IS_ACTOR_TYPE_VALID(player, continue);
-		// All players in list_of_players_in_latest_tick_ were valid (alive) before we got here
+		// All players in players_in_tick_ were valid (alive) before we got here
 		// Check they're still valid. If they are, then they should have a player information
 		if (IsValid(player))
 		{
@@ -350,10 +355,95 @@ void LagCompensation::RestorePlayers(void)
 
 			auto player_information{GetActorInformation(player)};
 
-			original_world_farmoveactor(global_world, nullptr, player, player_information->tick_information_[0].location_, 0, 1, 0);
+			original_world_farmoveactor(global_world, nullptr, player, player_information->rewind_information_[0].location_, 0, 1, 0);
 		}
 	}
 }
+
+template<IsRewindableActor ActorType>
+bool LagCompensation::Rewind(Ping ping_in_ms)
+{
+	if (PERFORM_ERROR_CHECK(!IsPingValid(ping_in_ms), "Ping argument is invalid ({})", ping_in_ms))
+		return false;
+
+	if (PERFORM_ERROR_CHECK(team_per_ping_[ping_in_ms] == kUninitialisedTeam, "A ping of {} has an uninitialised team", ping_in_ms))
+		;
+
+	bool all_projectiles_are_from_same_ping_bucket{};
+
+	if constexpr(std::is_same_v<ActorType, Player>)
+	{
+		all_projectiles_are_from_same_ping_bucket = team_per_ping_[ping_in_ms] != kInvalidTeam;
+	}
+	auto tick_index{static_cast<int>(ping_in_ms / tick_delta_in_ms_)};
+	auto prev_index{tick_index + 1};
+
+	if (PERFORM_ERROR_CHECK(tick_index < 0, "Calculated tick index ({}) is less than zero", tick_index))
+		return false;
+
+	if (PERFORM_ERROR_CHECK(prev_index >= window_buffer_size_, "Calculated previous tick index ({}) is greater than or equal to window buffer size ({})", prev_index, window_buffer_size_))
+		return false;
+
+	for (auto actor : std::get<ActorType>(actors_in_tick_))
+	{
+		IS_ACTOR_TYPE_VALID(actor, continue);
+
+		// All players in players_in_tick_ were valid (alive) before we got here
+		// Check they're still valid. If they are, then they should have a player information
+		if (IsValid(actor))
+		{
+			// Player could have died, so check IS_ACTOR_VALID AFTER IsValid
+			IS_ACTOR_VALID(actor, continue);
+			IS_ACTOR_INFORMATION_VALID(actor, continue);
+
+			auto actor_information{GetActorInformation(actor)};
+
+			if constexpr(std::is_same_v<ActorType, Player>)
+			{
+				if (all_projectiles_are_from_same_ping_bucket && actor_information->team_ == team_per_ping_[ping_in_ms])
+				{
+					continue;
+				}
+			}
+
+			if (prev_index < actor_information->rewind_information_.Size())
+			{
+				const auto& tick_location{actor_information->rewind_information_[tick_index].location_};
+				const auto& prev_location{actor_information->rewind_information_[prev_index].location_};
+
+				auto delta{Subtract_VectorVector(prev_location, tick_location)};
+				static constexpr auto interpolate_scalar{0.5};
+				auto interpolated_location{Add_VectorVector(tick_location,
+															Multiply_VectorFloat(delta, interpolate_scalar))};
+				original_world_farmoveactor(global_world, nullptr, actor, actor_information->rewind_information_[0].location_, 0, 1, 0);
+			}
+		}
+	}
+
+	return true;
+}
+
+template<IsRewindableActor ActorType>
+void LagCompensation::Restore(void)
+{
+	for (auto actor : std::get<ActorType>(actors_in_tick_))
+	{
+		IS_ACTOR_TYPE_VALID(actor, continue);
+		// All players in players_in_tick_ were valid (alive) before we got here
+		// Check they're still valid. If they are, then they should have a player information
+		if (IsValid(actor))
+		{
+			// Player could have died, so check IS_ACTOR_VALID AFTER IsValid
+			IS_ACTOR_VALID(actor, continue);
+			IS_ACTOR_INFORMATION_VALID(actor, continue);
+
+			auto actor_informatiopn{GetActorInformation(actor)};
+
+			original_world_farmoveactor(global_world, nullptr, actor, actor_informatiopn->rewind_information_[0].location_, 0, 1, 0);
+		}
+	}
+}
+
 
 void LagCompensation::Tick(float delta_seconds, ELevelTick tick_type)
 {
@@ -367,7 +457,7 @@ void LagCompensation::Tick(float delta_seconds, ELevelTick tick_type)
 		if (PERFORM_ERROR_CHECK(!IsPingValid(ping_in_ms), "Ping is invalid ({})", ping_in_ms))
 			continue;
 
-		auto& list_of_projectiles{list_of_lag_compensated_projectiles_by_ping_in_latest_tick_[ping_in_ms]};
+		auto& list_of_projectiles{lag_compensated_projectiles_by_ping_in_tick_[ping_in_ms]};
 
 		if (PERFORM_ERROR_CHECK(list_of_projectiles.empty(), "List of projectiles for ping {} is empty", ping_in_ms))
 			continue;
@@ -395,7 +485,7 @@ void LagCompensation::Tick(float delta_seconds, ELevelTick tick_type)
 	}
 
 	pings_to_tick_in_latest_tick_.clear();
-	list_of_players_in_latest_tick_.clear();
+	players_in_tick_.clear();
 	std::fill(team_per_ping_.begin(), team_per_ping_.end(), kUninitialisedTeam);
 
 	// Would it be faster to do below?
@@ -425,14 +515,14 @@ UE3_PROCESSINTERNAL_HOOK(LagCompensation::OnProjectileRadialDamage)
 
 	auto rewind{RewindPlayers(projectile_information->ping_in_ms_)};
 	// An invalid instigator means the instigator has Died or Destroy'ed
-	if (rewind && IsA<Player>(instigator) && IsValid(instigator))
+	if (rewind && IsValidAndIsA<Player>(instigator))
 	{
 		// The instigator should never change once the projectile is created (UNLESS it is set to nullptr through GC)
 		IS_ACTOR_VALID(instigator, RestorePlayers(); return original_processinternal(calling_uobject, unused, stack, result));
 		IS_ACTOR_INFORMATION_VALID(instigator, RestorePlayers(); return original_processinternal(calling_uobject, unused, stack, result));
 
 		auto player_information{GetActorInformation(instigator)};
-		instigator->SetLocation(player_information->tick_information_[0].location_);
+		instigator->SetLocation(player_information->rewind_information_[0].location_);
 	}
 
 	// Apply splash (radial) damage.
@@ -457,8 +547,7 @@ size_t LagCompensation::GetActorInformationIndex(AActor* actor)
 }
 
 /// @cond DOXYGEN_SHOULD_SKIP_THIS
-template <>
-void __fastcall LagCompensation::ActorTick<Player>(Player* player, void* unused, float delta_seconds, ELevelTick tick_type)
+void __fastcall LagCompensation::OnActorTick(Player* player, void* unused, float delta_seconds, ELevelTick tick_type)
 {
 	if (!ticking_TG_PreAsyncWork)
 	{
@@ -479,8 +568,7 @@ void __fastcall LagCompensation::ActorTick<Player>(Player* player, void* unused,
 /// @endcond
 
 /// @cond DOXYGEN_SHOULD_SKIP_THIS
-template <>
-static void __fastcall LagCompensation::ActorTick<Projectile>(Projectile* projectile, void* unused, float delta_seconds, ELevelTick tick_type)
+void __fastcall LagCompensation::OnActorTick(Projectile* projectile, void* unused, float delta_seconds, ELevelTick tick_type)
 {
 	if (!ticking_TG_PreAsyncWork)
 	{
@@ -494,6 +582,25 @@ static void __fastcall LagCompensation::ActorTick<Projectile>(Projectile* projec
 	{
 		// Return value tells us if we should absorb the call the below
 		return original_actor_tick(projectile, nullptr, delta_seconds, tick_type);
+	}
+}
+/// @endcond
+
+/// @cond DOXYGEN_SHOULD_SKIP_THIS
+void __fastcall LagCompensation::OnActorTick(Flag* flag, void* unused, float delta_seconds, ELevelTick tick_type)
+{
+	if (!ticking_TG_PreAsyncWork)
+	{
+		return original_actor_tick(flag, nullptr, delta_seconds, tick_type);
+	}
+
+	IS_ACTOR_TYPE_VALID(flag, original_actor_tick(flag, nullptr, delta_seconds, tick_type));
+
+	static auto& lag_compensation{LagCompensation::GetInstance()};
+	if (!lag_compensation.OnActorTick(flag))
+	{
+		// Return value tells us if we should absorb the call the below
+		return original_actor_tick(flag, nullptr, delta_seconds, tick_type);
 	}
 }
 /// @endcond

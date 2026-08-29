@@ -19,6 +19,14 @@ concept HasReset = requires(T& t) {
 	t.Reset();
 };
 
+template<typename T>
+concept HasRewindInformation = requires (T& t) {
+	t.rewind_information_;
+};
+
+template<typename T>
+concept IsRewindableActor = IsAnActor<T> && HasRewindInformation<T>;
+
 #define IS_ACTOR_INFORMATION_VALID(POINTER_TO_ACTOR, STATEMENT_ON_ERROR)                                            \
 	{                                                                                                               \
 		auto& lag_compensation{LagCompensation::GetInstance()};                                                     \
@@ -103,6 +111,7 @@ class LagCompensation
 	static constexpr size_t kEstimatedMaxPlayers{kEstimatedMaxControllers};
 	static constexpr size_t kEstimatedMaxProjectiles{kEstimatedMaxPlayers * 1000};
 	static constexpr size_t kEstimatedMaxProjectilesPerPing{kEstimatedMaxPlayers * 100};
+	static constexpr size_t kEstimatedMaxFlags{3};
 
 	// Store a list of which pings to tick (optimisation)
 	std::vector<Ping> pings_to_tick_in_latest_tick_{};
@@ -112,7 +121,7 @@ class LagCompensation
 	// when we need to access/use them.
 	// A projectile may have become invalid (Explode -> Destroy'ed) as the world tick continued
 	// But, they won't have been GC'd yet so we can still check if they're valid
-	std::array<std::vector<Projectile*>, static_cast<size_t>(window_in_ms_)> list_of_lag_compensated_projectiles_by_ping_in_latest_tick_{};
+	std::array<std::vector<Projectile*>, static_cast<size_t>(window_in_ms_)> lag_compensated_projectiles_by_ping_in_tick_{};
 
 	// Check if all projectiles in a ping bucket are from the same team
 	std::array<int, static_cast<int>(window_in_ms_)> team_per_ping_{};
@@ -123,7 +132,9 @@ class LagCompensation
 	// at some point in the current engine world tick
 	// Similar to the comment above, when accessing the players in this list, the player may have
 	// become invalid (Died (but not destroyed) or Destroy'ed). Validity checks are needed
-	std::vector<Player*> list_of_players_in_latest_tick_{};
+	std::vector<Player*> players_in_tick_{};
+
+	std::tuple<std::vector<Player*>, std::vector<Flag*>> actors_in_tick_{};
 
 	template <typename Element, size_t Capacity, bool PerformErrorChecks = kPerformErrorChecks>
 	class ManagedCircularBuffer : public CircularBuffer<Element, Capacity, PerformErrorChecks>
@@ -152,6 +163,26 @@ class LagCompensation
 		protected:
 		ActorInformationBase() = default;
 	};
+
+	template<IsAnActor ActorType>
+	struct ActorTickInformation;
+
+	template<>
+	struct ActorTickInformation<Player>
+	{
+		Vector3D location_{};
+		// Vector3D velocity_{};
+	};
+
+	template<>
+	struct ActorTickInformation<Flag>
+	{
+		Vector3D location_{};
+		bool is_valid_{};
+	};
+
+	template<IsAnActor ActorType>
+	using RewindInformation = ManagedCircularBuffer<ActorTickInformation<ActorType>, window_buffer_size_>;
 
 	// Do NOT store any caches of anything derived from the Actor class
 	// This is because (e.g. caching projectiles instigator in ActorInformation<Projectile>):
@@ -192,17 +223,12 @@ class LagCompensation
 	template <>
 	struct ActorInformation<Player> : public ActorInformationBase
 	{
-		class PlayerTickInformation
-		{
-			public:
-			FVector location_{};
-			FVector velocity_{};
-		};
 		Team team_{kInvalidTeam};
-		ManagedCircularBuffer<PlayerTickInformation, window_buffer_size_> tick_information_{};
+		RewindInformation<Player> rewind_information_{};
+
 		void Reset(void)
 		{
-			tick_information_.Reset();
+			rewind_information_.Reset();
 		}
 
 		static bool IsValid(Player* player)
@@ -220,7 +246,7 @@ class LagCompensation
 		{
 			IS_ACTOR_VALID(static_cast<Player*>(actor_), return false);
 
-			if (PERFORM_ERROR_CHECK(tick_information_.Size() == 0, "Player information has an empty tick information buffer"))
+			if (PERFORM_ERROR_CHECK(rewind_information_.Size() == 0, "Player information has an empty tick information buffer"))
 				return false;
 
 			if (PERFORM_ERROR_CHECK(!IsTeamValid(team_), "Player information belongs to an invalid team ({})", team_))
@@ -291,6 +317,30 @@ class LagCompensation
 #endif
 	};
 
+	template <>
+	struct ActorInformation<Flag> : public ActorInformationBase
+	{
+		RewindInformation<Flag> rewind_information_{};
+
+		void Reset(void)
+		{
+			rewind_information_.Reset();
+		}
+
+		static bool IsValid(Flag* flag)
+		{
+			return true;
+		}
+
+#if defined(PERFORM_ERROR_CHECKS)
+		bool IsValid(void)
+		{
+			IS_ACTOR_VALID(static_cast<Flag*>(actor_), return false);
+			return true;
+		}
+#endif
+	};
+
 	private:
 	template <IsAnActor ActorType>
 	struct ActorObjectPoolData;
@@ -313,6 +363,12 @@ class LagCompensation
 		static constexpr size_t InitialCapacity{kEstimatedMaxProjectiles};
 	};
 
+	template <>
+	struct ActorObjectPoolData<Flag>
+	{
+		static constexpr size_t InitialCapacity{kEstimatedMaxFlags};
+	};
+
 	template <IsAnActor ActorType>
 	struct ActorObjectPoolTraits : public ActorObjectPoolData<ActorType>
 	{
@@ -322,14 +378,15 @@ class LagCompensation
 	};
 
 	template <IsAnActor ActorType>
-	using ObjectPoolType = ActorObjectPoolTraits<ActorType>::ObjectPoolType;
+	using ObjectPool = ActorObjectPoolTraits<ActorType>::ObjectPoolType;
 
-	std::tuple<ObjectPoolType<Controller>, ObjectPoolType<Player>, ObjectPoolType<Projectile>> object_pools_ = std::make_tuple(CreateObjectPool<Controller>(),
+	std::tuple<ObjectPool<Controller>, ObjectPool<Player>, ObjectPool<Projectile>, ObjectPool<Flag>> object_pools_ = std::make_tuple(CreateObjectPool<Controller>(),
 																															   CreateObjectPool<Player>(),
-																															   CreateObjectPool<Projectile>());
+																															   CreateObjectPool<Projectile>(),
+																															   CreateObjectPool<Flag>());
 
 	template <IsAnActor ActorType>
-	ObjectPoolType<ActorType> CreateObjectPool(void);
+	ObjectPool<ActorType> CreateObjectPool(void);
 
 	size_t GetActorInformationIndex(Actor* actor);
 
@@ -343,35 +400,38 @@ class LagCompensation
 	template <IsAnActor ActorType>
 	void FreeActorInformation(ActorType* actor);
 
-	template <IsAnActor ActorType>
-	// Assumptions: actor is at least not nullptr
-	bool OnActorTick(ActorType* actor);
-
 	// Currently there's no way optimial way to identify a Projectile in Actor::Tick hook unlike Player
 	// So we resort to checking the if the actor has an ActorInformation<Projectile> and such
 	// This function is called when a projectile is spawned so we can assigned it an ActorInformation
 	ActorObjectPoolTraits<Projectile>::InformationType* AddProjectile(Projectile* projectile);
 	bool RewindPlayers(Ping ping_in_ms);
 	void RestorePlayers(void);
+
+	template<IsRewindableActor ActorType>
+	bool Rewind(Ping ping_in_ms);
+
+	template<IsRewindableActor ActorType>
+	void Restore();
+
+
 	void Tick(float delta_seconds, ELevelTick tick_type);
 	UE3_PROCESSINTERNAL_HOOK(OnProjectileRadialDamage);
 
 	private:
-	template <IsAnActor ActorType>
-	static void __fastcall ActorTick(ActorType* actor, void* unused, float delta_seconds, ELevelTick tick_type);
-
-	template <>
-	static void __fastcall ActorTick<Player>(Player* player, void* unused, float delta_seconds, ELevelTick tick_type);
-	template <>
-	static void __fastcall ActorTick<Projectile>(Projectile* projectile, void* unused, float delta_seconds, ELevelTick tick_type);
+	static void __fastcall OnActorTick(Player* player, void* unused, float delta_seconds, ELevelTick tick_type);
+	static void __fastcall OnActorTick(Projectile* projectile, void* unused, float delta_seconds, ELevelTick tick_type);
+	static void __fastcall OnActorTick(Flag* flag, void* unused, float delta_seconds, ELevelTick tick_type);
+	bool OnActorTick(Player* player);
+	bool OnActorTick(Projectile* projectile);
+	bool OnActorTick(Flag* flag);
 };
 
 template <IsAnActor ActorType>
-LagCompensation::ObjectPoolType<ActorType> LagCompensation::CreateObjectPool(void)
+LagCompensation::ObjectPool<ActorType> LagCompensation::CreateObjectPool(void)
 {
-	using ObjectPoolType = ObjectPoolType<ActorType>;
+	using ObjectPool = ObjectPool<ActorType>;
 	using ActorObjectPoolData = ActorObjectPoolTraits<ActorType>::ObjectPoolData;
-	return ObjectPoolType(ActorObjectPoolData::InitialCapacity);
+	return ObjectPool(ActorObjectPoolData::InitialCapacity);
 }
 
 template <IsAnActor ActorType>
@@ -379,7 +439,7 @@ LagCompensation::ActorObjectPoolTraits<ActorType>::InformationType* LagCompensat
 {
 	IS_ACTOR_TYPE_VALID(actor, return nullptr);
 
-	auto& object_pool{std::get<ObjectPoolType<ActorType>>(object_pools_)};
+	auto& object_pool{std::get<ObjectPool<ActorType>>(object_pools_)};
 	if (PERFORM_ERROR_CHECK(GetActorInformationIndex(actor) != kInvalidObjectPoolIndex,
 							"Attempting to allocate actor information to an actor ({}) which already has actor information attached",
 							actor->GetFullName()))
@@ -420,7 +480,7 @@ LagCompensation::ActorObjectPoolTraits<ActorType>::InformationType* LagCompensat
 		return nullptr;
 	}
 
-	auto& object_pool{std::get<ObjectPoolType<ActorType>>(object_pools_)};
+	auto& object_pool{std::get<ObjectPool<ActorType>>(object_pools_)};
 	auto actor_information{object_pool.At(index)};
 	return actor_information;
 }
@@ -438,7 +498,7 @@ void LagCompensation::FreeActorInformation(ActorType* actor)
 		return;
 	}
 
-	auto& object_pool{std::get<ObjectPoolType<ActorType>>(object_pools_)};
+	auto& object_pool{std::get<ObjectPool<ActorType>>(object_pools_)};
 	if constexpr (HasReset<typename ActorObjectPoolTraits<ActorType>::InformationType>)
 	{
 		object_pool.Free<false>(index);

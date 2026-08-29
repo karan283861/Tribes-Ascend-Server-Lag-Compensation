@@ -14,10 +14,14 @@ using Controller = ATrPlayerController;
 using Player = ATrPlayerPawn;
 /// @brief Alias for the runtime projectile type
 using Projectile = ATrProjectile;
+/// @brief Alias for the runtime flag type
+using Flag = ATrFlagBase;
 /// @brief Alias for the RTT ping of a player
 using Ping = float;
 /// @brief Alias for the team of a player
 using Team = int;
+/// @brief Alias for the engines vector math class
+using Vector3D = FVector;
 
 template <typename T>
 using rcvref = std::remove_cvref_t<T>;
@@ -94,6 +98,13 @@ bool IsValid(ActorType* actor)
 		auto projectile{reinterpret_cast<Projectile*>(actor)};
 		return IsActorValid(projectile);
 	}
+	else if constexpr (std::is_same_v<ActorType, Flag>)
+	{
+		auto flag{reinterpret_cast<Flag*>(actor)};
+		return IsActorValid(flag) &&
+				!flag->bHome &&
+		 		!flag->Holder;
+	}
 }
 
 /**
@@ -159,6 +170,22 @@ ActorType* IsA(Actor* actor)
 					  (super_class == player_class);
 		return result ? casted_actor : nullptr;
 	}
+	else if constexpr (std::is_same_v<ActorType, Flag>)
+	{
+		// Flag is not a final class. There are types derived from it
+		// The immediate derived types of Flag are not final
+		// Also, these derived types are multiple levels below Flag
+
+		// auto flag{reinterpret_cast<Flag*>(actor)};
+		const auto* flag_class{Flag::StaticClass()};
+		const auto* flag_ctf_class{ATrFlagCTF::StaticClass()};
+		const auto* super_class{actor->Class->SuperField};
+		// Most flags will be of type ATrFlagCTF_BloodEagle or ATrFlagCTF_DiamondSword,
+		// very unlikey they will be a different type
+		auto result = (super_class == flag_ctf_class) ||
+					  (super_class == flag_class);
+		return result ? casted_actor : nullptr;
+	}
 	else if constexpr (kPerformErrorChecks)
 	{
 		// This function should not be used as it not efficient
@@ -182,9 +209,9 @@ ActorType* IsValidAndIsA(Actor* actor)
 }
 
 // Avoid using Unreal VM.
-FVector Add_VectorVector(const FVector& A, const FVector& B);
-FVector Subtract_VectorVector(const FVector& A, const FVector& B);
-FVector Multiply_VectorFloat(const FVector& A, const float& B);
+Vector3D Add_VectorVector(const Vector3D& A, const Vector3D& B);
+Vector3D Subtract_VectorVector(const Vector3D& A, const Vector3D& B);
+Vector3D Multiply_VectorFloat(const Vector3D& A, const float& B);
 
 // Get all instances of a specific UObject type in the GObjects buffer.
 template <class T>
