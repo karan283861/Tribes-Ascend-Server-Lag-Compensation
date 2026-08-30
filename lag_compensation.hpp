@@ -15,17 +15,14 @@
 #include "processinternal_hooks.hpp"
 
 template <typename T>
-concept HasReset = requires(T& t) {
+concept IsResettable = requires(T& t) {
 	t.Reset();
 };
 
 template<typename T>
-concept HasRewindInformation = requires (T& t) {
+concept IsRewindable = requires (T& t) {
 	t.rewind_information_;
-};
-
-template<typename T>
-concept IsRewindableActor = IsAnActor<T> && HasRewindInformation<T>;
+} && IsResettable<T>;
 
 #define IS_ACTOR_INFORMATION_VALID(POINTER_TO_ACTOR, STATEMENT_ON_ERROR)                                            \
 	{                                                                                                               \
@@ -134,7 +131,9 @@ class LagCompensation
 	// become invalid (Died (but not destroyed) or Destroy'ed). Validity checks are needed
 	std::vector<Player*> players_in_tick_{};
 
-	std::tuple<std::vector<Player*>, std::vector<Flag*>> actors_in_tick_{};
+	template<IsAnActor ActorType>
+	using ActorPointerList = std::vector<ActorType*>;
+	std::tuple<ActorPointerList<Player>, ActorPointerList<Flag>> actors_in_tick_{};
 
 	template <typename Element, size_t Capacity, bool PerformErrorChecks = kPerformErrorChecks>
 	class ManagedCircularBuffer : public CircularBuffer<Element, Capacity, PerformErrorChecks>
@@ -152,6 +151,37 @@ class LagCompensation
 	static constexpr size_t kInvalidObjectPoolIndex{0};
 
 	public:
+	struct ActorTickInformationBase
+	{
+		ActorTickInformationBase(const ActorTickInformationBase&) = delete;
+		ActorTickInformationBase& operator=(const ActorTickInformationBase&) = delete;
+		ActorTickInformationBase(ActorTickInformationBase&&) = default;
+		ActorTickInformationBase& operator=(ActorTickInformationBase&&) = default;
+		Vector3D location_{};
+
+		protected:
+		ActorTickInformationBase() = default;
+	};
+
+	template<IsAnActor ActorType>
+	struct ActorTickInformation;
+
+	template<>
+	struct ActorTickInformation<Player> : public ActorTickInformationBase
+	{
+		ActorTickInformation() = default;
+	};
+
+	template<>
+	struct ActorTickInformation<Flag> : public ActorTickInformationBase
+	{
+		ActorTickInformation() = default;
+		bool is_valid_{};
+	};
+
+	template<IsAnActor ActorType>
+	using RewindInformation = ManagedCircularBuffer<ActorTickInformation<ActorType>, window_buffer_size_>;
+
 	struct ActorInformationBase
 	{
 		ActorInformationBase(const ActorInformationBase&) = delete;
@@ -163,26 +193,6 @@ class LagCompensation
 		protected:
 		ActorInformationBase() = default;
 	};
-
-	template<IsAnActor ActorType>
-	struct ActorTickInformation;
-
-	template<>
-	struct ActorTickInformation<Player>
-	{
-		Vector3D location_{};
-		// Vector3D velocity_{};
-	};
-
-	template<>
-	struct ActorTickInformation<Flag>
-	{
-		Vector3D location_{};
-		bool is_valid_{};
-	};
-
-	template<IsAnActor ActorType>
-	using RewindInformation = ManagedCircularBuffer<ActorTickInformation<ActorType>, window_buffer_size_>;
 
 	// Do NOT store any caches of anything derived from the Actor class
 	// This is because (e.g. caching projectiles instigator in ActorInformation<Projectile>):
@@ -196,7 +206,7 @@ class LagCompensation
 	template <>
 	struct ActorInformation<Controller> : public ActorInformationBase
 	{
-		ActorInformation<Controller>() = default;
+		ActorInformation() = default;
 
 		Ping last_ping_in_ms_{};
 
@@ -260,7 +270,7 @@ class LagCompensation
 	template <>
 	struct ActorInformation<Projectile> : public ActorInformationBase
 	{
-		ActorInformation<Projectile>() = default;
+		ActorInformation() = default;
 
 		Ping ping_in_ms_{};
 		Team team_{kInvalidTeam};
@@ -404,13 +414,15 @@ class LagCompensation
 	// So we resort to checking the if the actor has an ActorInformation<Projectile> and such
 	// This function is called when a projectile is spawned so we can assigned it an ActorInformation
 	ActorObjectPoolTraits<Projectile>::InformationType* AddProjectile(Projectile* projectile);
-	bool RewindPlayers(Ping ping_in_ms);
-	void RestorePlayers(void);
+	// bool RewindPlayers(Ping ping_in_ms);
+	// void RestorePlayers(void);
 
-	template<IsRewindableActor ActorType>
+	template<IsAnActor ActorType>
+	requires IsRewindable<typename LagCompensation::ActorObjectPoolTraits<ActorType>::InformationType>
 	bool Rewind(Ping ping_in_ms);
 
-	template<IsRewindableActor ActorType>
+	template<IsAnActor ActorType>
+	requires IsRewindable<typename LagCompensation::ActorObjectPoolTraits<ActorType>::InformationType>
 	void Restore();
 
 
@@ -499,7 +511,7 @@ void LagCompensation::FreeActorInformation(ActorType* actor)
 	}
 
 	auto& object_pool{std::get<ObjectPool<ActorType>>(object_pools_)};
-	if constexpr (HasReset<typename ActorObjectPoolTraits<ActorType>::InformationType>)
+	if constexpr (IsResettable<typename ActorObjectPoolTraits<ActorType>::InformationType>)
 	{
 		object_pool.Free<false>(index);
 		object_pool[index].Reset();
@@ -517,3 +529,6 @@ void LagCompensation::FreeActorInformation(ActorType* actor)
 	// FreeActorInformation
 	*reinterpret_cast<size_t*>(&actor->EditorIconColor) = kInvalidObjectPoolIndex;
 }
+
+static_assert(IsRewindable<LagCompensation::ActorInformation<Player>> && IsResettable<LagCompensation::ActorInformation<Player>>);
+static_assert(IsRewindable<LagCompensation::ActorInformation<Flag>> && IsResettable<LagCompensation::ActorInformation<Flag>>);

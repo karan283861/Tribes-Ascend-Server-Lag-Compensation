@@ -289,78 +289,79 @@ bool LagCompensation::OnActorTick(Flag* player)
 	return false;
 }
 
-bool LagCompensation::RewindPlayers(Ping ping_in_ms)
-{
-	if (PERFORM_ERROR_CHECK(!IsPingValid(ping_in_ms), "Ping argument is invalid ({})", ping_in_ms))
-		return false;
+// bool LagCompensation::RewindPlayers(Ping ping_in_ms)
+// {
+// 	if (PERFORM_ERROR_CHECK(!IsPingValid(ping_in_ms), "Ping argument is invalid ({})", ping_in_ms))
+// 		return false;
 
-	if (PERFORM_ERROR_CHECK(team_per_ping_[ping_in_ms] == kUninitialisedTeam, "A ping of {} has an uninitialised team", ping_in_ms))
-		;
+// 	if (PERFORM_ERROR_CHECK(team_per_ping_[ping_in_ms] == kUninitialisedTeam, "A ping of {} has an uninitialised team", ping_in_ms))
+// 		;
 
-	bool all_projectiles_are_from_same_ping_bucket{team_per_ping_[ping_in_ms] != kInvalidTeam};
-	auto tick_index{static_cast<int>(ping_in_ms / tick_delta_in_ms_)};
-	auto prev_index{tick_index + 1};
+// 	bool all_projectiles_are_from_same_ping_bucket{team_per_ping_[ping_in_ms] != kInvalidTeam};
+// 	auto tick_index{static_cast<int>(ping_in_ms / tick_delta_in_ms_)};
+// 	auto prev_index{tick_index + 1};
 
-	if (PERFORM_ERROR_CHECK(tick_index < 0, "Calculated tick_index is less than zero ({})", tick_index))
-		return false;
+// 	if (PERFORM_ERROR_CHECK(tick_index < 0, "Calculated tick_index is less than zero ({})", tick_index))
+// 		return false;
 
-	for (auto& player : players_in_tick_)
-	{
-		IS_ACTOR_TYPE_VALID(player, continue);
+// 	for (auto& player : players_in_tick_)
+// 	{
+// 		IS_ACTOR_TYPE_VALID(player, continue);
 
-		// All players in players_in_tick_ were valid (alive) before we got here
-		// Check they're still valid. If they are, then they should have a player information
-		if (IsValid(player))
-		{
-			// Player could have died, so check IS_ACTOR_VALID AFTER IsValid
-			IS_ACTOR_VALID(player, continue);
-			IS_ACTOR_INFORMATION_VALID(player, continue);
+// 		// All players in players_in_tick_ were valid (alive) before we got here
+// 		// Check they're still valid. If they are, then they should have a player information
+// 		if (IsValid(player))
+// 		{
+// 			// Player could have died, so check IS_ACTOR_VALID AFTER IsValid
+// 			IS_ACTOR_VALID(player, continue);
+// 			IS_ACTOR_INFORMATION_VALID(player, continue);
 
-			auto player_information{GetActorInformation(player)};
+// 			auto player_information{GetActorInformation(player)};
 
-			if (all_projectiles_are_from_same_ping_bucket && player_information->team_ == team_per_ping_[ping_in_ms])
-			{
-				continue;
-			}
+// 			if (all_projectiles_are_from_same_ping_bucket && player_information->team_ == team_per_ping_[ping_in_ms])
+// 			{
+// 				continue;
+// 			}
 
-			if (prev_index < player_information->rewind_information_.Size())
-			{
-				const auto& tick_location{player_information->rewind_information_[tick_index].location_};
-				const auto& prev_location{player_information->rewind_information_[prev_index].location_};
+// 			if (prev_index < player_information->rewind_information_.Size())
+// 			{
+// 				const auto& tick_location{player_information->rewind_information_[tick_index].location_};
+// 				const auto& prev_location{player_information->rewind_information_[prev_index].location_};
 
-				auto delta{Subtract_VectorVector(prev_location, tick_location)};
-				static constexpr auto interpolate_scalar{0.5};
-				auto interpolated_location{Add_VectorVector(tick_location,
-															Multiply_VectorFloat(delta, interpolate_scalar))};
-				original_world_farmoveactor(global_world, nullptr, player, interpolated_location, 0, 1, 0);
-			}
-		}
-	}
+// 				auto delta{Subtract_VectorVector(prev_location, tick_location)};
+// 				static constexpr auto interpolate_scalar{0.5};
+// 				auto interpolated_location{Add_VectorVector(tick_location,
+// 															Multiply_VectorFloat(delta, interpolate_scalar))};
+// 				original_world_farmoveactor(global_world, nullptr, player, interpolated_location, 0, 1, 0);
+// 			}
+// 		}
+// 	}
 
-	return true;
-}
+// 	return true;
+// }
 
-void LagCompensation::RestorePlayers(void)
-{
-	for (auto& player : players_in_tick_)
-	{
-		IS_ACTOR_TYPE_VALID(player, continue);
-		// All players in players_in_tick_ were valid (alive) before we got here
-		// Check they're still valid. If they are, then they should have a player information
-		if (IsValid(player))
-		{
-			// Player could have died, so check IS_ACTOR_VALID AFTER IsValid
-			IS_ACTOR_VALID(player, continue);
-			IS_ACTOR_INFORMATION_VALID(player, continue);
+// void LagCompensation::RestorePlayers(void)
+// {
+// 	for (auto& player : players_in_tick_)
+// 	{
+// 		IS_ACTOR_TYPE_VALID(player, continue);
+// 		// All players in players_in_tick_ were valid (alive) before we got here
+// 		// Check they're still valid. If they are, then they should have a player information
+// 		if (IsValid(player))
+// 		{
+// 			// Player could have died, so check IS_ACTOR_VALID AFTER IsValid
+// 			IS_ACTOR_VALID(player, continue);
+// 			IS_ACTOR_INFORMATION_VALID(player, continue);
 
-			auto player_information{GetActorInformation(player)};
+// 			auto player_information{GetActorInformation(player)};
 
-			original_world_farmoveactor(global_world, nullptr, player, player_information->rewind_information_[0].location_, 0, 1, 0);
-		}
-	}
-}
+// 			original_world_farmoveactor(global_world, nullptr, player, player_information->rewind_information_[0].location_, 0, 1, 0);
+// 		}
+// 	}
+// }
 
-template<IsRewindableActor ActorType>
+template<IsAnActor ActorType>
+requires IsRewindable<typename LagCompensation::ActorObjectPoolTraits<ActorType>::InformationType>
 bool LagCompensation::Rewind(Ping ping_in_ms)
 {
 	if (PERFORM_ERROR_CHECK(!IsPingValid(ping_in_ms), "Ping argument is invalid ({})", ping_in_ms))
@@ -384,7 +385,7 @@ bool LagCompensation::Rewind(Ping ping_in_ms)
 	if (PERFORM_ERROR_CHECK(prev_index >= window_buffer_size_, "Calculated previous tick index ({}) is greater than or equal to window buffer size ({})", prev_index, window_buffer_size_))
 		return false;
 
-	for (auto actor : std::get<ActorType>(actors_in_tick_))
+	for (auto actor : std::get<ActorPointerList<ActorType>>(actors_in_tick_))
 	{
 		IS_ACTOR_TYPE_VALID(actor, continue);
 
@@ -423,10 +424,11 @@ bool LagCompensation::Rewind(Ping ping_in_ms)
 	return true;
 }
 
-template<IsRewindableActor ActorType>
+template<IsAnActor ActorType>
+requires IsRewindable<typename LagCompensation::ActorObjectPoolTraits<ActorType>::InformationType>
 void LagCompensation::Restore(void)
 {
-	for (auto actor : std::get<ActorType>(actors_in_tick_))
+	for (auto actor : std::get<ActorPointerList<ActorType>>(actors_in_tick_))
 	{
 		IS_ACTOR_TYPE_VALID(actor, continue);
 		// All players in players_in_tick_ were valid (alive) before we got here
@@ -462,9 +464,9 @@ void LagCompensation::Tick(float delta_seconds, ELevelTick tick_type)
 		if (PERFORM_ERROR_CHECK(list_of_projectiles.empty(), "List of projectiles for ping {} is empty", ping_in_ms))
 			continue;
 
-		performed_rewind_of_players |= RewindPlayers(ping_in_ms);
+		performed_rewind_of_players |= Rewind<Player>(ping_in_ms);
 
-		// Even if RewindPlayers encounters an error, we still should tick the projectiles
+		// Even if Rewind encounters an error, we still should tick the projectiles
 		for (auto& projectile : list_of_projectiles)
 		{
 			IS_ACTOR_VALID(projectile, continue); // Hopefully, not critical error if not though
@@ -481,7 +483,7 @@ void LagCompensation::Tick(float delta_seconds, ELevelTick tick_type)
 
 	if (performed_rewind_of_players)
 	{
-		RestorePlayers();
+		Restore<Player>();
 	}
 
 	pings_to_tick_in_latest_tick_.clear();
@@ -513,13 +515,13 @@ UE3_PROCESSINTERNAL_HOOK(LagCompensation::OnProjectileRadialDamage)
 
 	IS_ACTOR_INFORMATION_VALID(projectile, return original_processinternal(calling_uobject, unused, stack, result));
 
-	auto rewind{RewindPlayers(projectile_information->ping_in_ms_)};
+	auto rewind{Rewind<Player>(projectile_information->ping_in_ms_)};
 	// An invalid instigator means the instigator has Died or Destroy'ed
 	if (rewind && IsValidAndIsA<Player>(instigator))
 	{
 		// The instigator should never change once the projectile is created (UNLESS it is set to nullptr through GC)
-		IS_ACTOR_VALID(instigator, RestorePlayers(); return original_processinternal(calling_uobject, unused, stack, result));
-		IS_ACTOR_INFORMATION_VALID(instigator, RestorePlayers(); return original_processinternal(calling_uobject, unused, stack, result));
+		IS_ACTOR_VALID(instigator, Restore<Player>(); return original_processinternal(calling_uobject, unused, stack, result));
+		IS_ACTOR_INFORMATION_VALID(instigator, Restore<Player>(); return original_processinternal(calling_uobject, unused, stack, result));
 
 		auto player_information{GetActorInformation(instigator)};
 		instigator->SetLocation(player_information->rewind_information_[0].location_);
@@ -530,7 +532,7 @@ UE3_PROCESSINTERNAL_HOOK(LagCompensation::OnProjectileRadialDamage)
 
 	if (rewind)
 	{
-		RestorePlayers();
+		Restore<Player>();
 	}
 
 	// Let UTProjectileDestroyed take care of calling FreeActorInformation
